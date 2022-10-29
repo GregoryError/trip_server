@@ -1,5 +1,7 @@
 package com.kaleidoscope.tripserver.presenters;
 
+import org.json.JSONObject;
+
 public class MainPresenter {
 
     private String locationName;
@@ -8,6 +10,8 @@ public class MainPresenter {
     private String topPlacesJson;
     private String storiesJson;
     private String topTripsJson;
+
+    public MainPresenter() {}
 
     public MainPresenter(String locationName, String headImgUrl, String advicePlacesJson, String topPlacesJson, String storiesJson, String topTripsJson) {
         this.locationName = locationName;
