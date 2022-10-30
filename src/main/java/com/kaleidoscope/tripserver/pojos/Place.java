@@ -9,7 +9,7 @@ import java.util.List;
 
 @Entity
 @Data
-public class Place {
+public class Place implements TripItem{
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)

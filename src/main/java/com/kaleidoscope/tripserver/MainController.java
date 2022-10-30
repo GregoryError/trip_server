@@ -6,13 +6,21 @@ import com.kaleidoscope.tripserver.pojos.User;
 import com.kaleidoscope.tripserver.presenters.MainPresenter;
 import com.kaleidoscope.tripserver.repositories.PlaceRepository;
 import com.kaleidoscope.tripserver.repositories.UserRepository;
-import org.json.JSONObject;
+import com.kaleidoscope.tripserver.utils.JsonBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 // TODO: connection to Firebase (check users)
@@ -25,12 +33,25 @@ public class MainController {
     @Autowired
     private PlaceRepository placeRepository;
 
-    @PostMapping("/add_user")
-    public @ResponseBody ResponseEntity<Objects> addNewUser(@RequestBody User user) {
-        System.out.println("USER: " +
-                user.toString());
+    private static final String UPLOAD_DIR = "/uploads/";
+    private Path path;
 
-        userRepository.save(user);
+    @PostMapping("/add_user")
+    public @ResponseBody ResponseEntity<Objects> addNewUser(/*@RequestBody User user,*/ @RequestParam("file") MultipartFile file) {
+
+
+        if (!file.isEmpty()) {
+            String fileName = StringUtils.cleanPath(file.getOriginalFilename());
+            // save an avatar-image on a server disk
+            try {
+                path = Paths.get(UPLOAD_DIR + fileName);
+                Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // userRepository.save(user); <-- !
         return new ResponseEntity<Objects>(HttpStatus.OK);
     }
 
@@ -64,58 +85,14 @@ public class MainController {
             user = userRepository.findById(id).get();
             presenter.setLocationName(user.getLocation()); // TODO: convert coordinates to name of place
 
+            // List of advisable places for this user based on tags TODO: ond rating (likes)
+            presenter.setAdvicePlacesJson(JsonBuilder
+                    .objectsByTags((List) placeRepository.findAll(),
+                            user.getListOfTags()).toString());
+            // List of advisable Trips for this user based on tags TODO: ond rating (likes)
 
-            // TODO: List of advisable places for this user based on tags ond rating (likes)
 
-            List<Place> placeList = (ArrayList) placeRepository.findAll();
-            List<Integer> countList = new ArrayList<>();
-            for (Place place : placeList) {
-                int count = 0;
-                List<Integer> placeTags = place.getTags();
-                for (int i = 0; i < placeTags.size(); ++i) {
-                    if (user.getListOfTags().contains(placeTags.get(i))) {
-                        ++count;
-                    }
-                }
-                countList.add(count);
-            }
 
-            List<Place> sortedPlacesByTags = new ArrayList<>();
-
-            for (int j = 0; j < placeList.size(); ++j) {
-                System.out.println("Count list: " +
-                        countList);
-
-                int index = 0;
-                for (int i = 0; i < countList.size(); ++i) {
-                    int max = 0;
-                    if (countList.get(i) > max) {
-                        max = countList.get(i);
-                        index = i;
-                    }
-                }
-
-                sortedPlacesByTags.add(placeList.get(index));
-                countList.remove(index);
-                countList.add(index, -1);
-
-            }
-
-            JSONObject jsonObject = new JSONObject();
-            Map<String, String> jsonObjectPlace = new HashMap<>();
-
-            for (Place place : sortedPlacesByTags) {
-                jsonObjectPlace.put("name", place.getName());
-                jsonObjectPlace.put("imageUrl", place.getImageUrl());
-                jsonObject.put(Long.toString(place.getId()), jsonObjectPlace);
-                jsonObjectPlace.clear();
-            }
-
-            presenter.setAdvicePlacesJson(jsonObject.toString());
-
-            System.out.println("Sorted by tags: " +
-                    sortedPlacesByTags);
-            
         }
 
         return presenter;

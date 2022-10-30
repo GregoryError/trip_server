@@ -6,7 +6,7 @@ import javax.persistence.GenerationType;
 import javax.persistence.Id;
 
 @Entity
-public class Trip {
+public class Trip implements TripItem{
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
