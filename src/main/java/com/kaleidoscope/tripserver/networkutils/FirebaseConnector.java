@@ -16,7 +16,6 @@ public class FirebaseConnector {
     private final String SERVICE_KEY =
             "/Users/user/IdeaProjects/tripserver/src/main/resources/static/trip-friend-4409c-firebase-adminsdk-y41p3-36b843a233.json";
 
-
     private static FirebaseConnector instance = null;
     private FirebaseAuth firebaseAuth = null;
 
@@ -52,8 +51,10 @@ public class FirebaseConnector {
             if ((user.getPhoneNumber() != null) && user.getPhoneNumber().equals(name))
                 return true;
         } catch (FirebaseAuthException e) {
+            System.out.println("FirebaseAuthException");
             throw new FirebaseAuthException(e);
         } catch (RuntimeException e) {
+            System.out.println("RuntimeException");
             e.printStackTrace();
         }
         return false;

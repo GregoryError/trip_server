@@ -39,7 +39,7 @@ public class MainController {
 
     @PostMapping("/login")
     public @ResponseBody ResponseEntity<String> login(@RequestParam("username") String username,
-                                                       @RequestParam("uId") String uId) {
+                                                      @RequestParam("uId") String uId) {
 
         // TODO: Request to Firebase once in a 5 times
         // TODO: if the user exist, generate API key for him and send "OK status"
@@ -55,38 +55,58 @@ public class MainController {
         String api_key = null;
 
         if (user != null) {
-            if (user.getCheckCount() < 5) {
-                api_key = HashGen.getInstance().generate(user.getUId());
-                user.setApiKey(api_key);
-                user.setCheckCount(user.getCheckCount() + 1);
-                userRepository.save(user);
-                return new ResponseEntity<String>(HttpStatus.OK);
+            if ((user.getEmail() != null && user.getEmail().equals(username)) ||
+                    (user.getPhone() != null && user.getPhone().equals(username))) {
+                if (user.getCheckCount() < 5) {
+                    api_key = HashGen.getInstance().generate(uId);
+                    user.setSent(false);
+                    user.setApiKey(api_key);
+                    user.setCheckCount(user.getCheckCount() + 1);
+                    userRepository.save(user);
+                    return ResponseEntity.status(HttpStatus.OK).body("Locally confirmed");
+                }
             }
         } else {
             user = new User();
+        }
+        try {
+            if (FirebaseConnector.getInstance().checkUser(username, uId)) {
+                System.out.println("Firebase checking");
 
-            try {
-                if (FirebaseConnector.getInstance().checkUser(username, uId)) {
-
-                    if (FirebaseConnector.getInstance().getEmail(uId) != null) {
-                        user.setEmail(FirebaseConnector.getInstance().getEmail(uId));
-                    }
-                    if (FirebaseConnector.getInstance().getPhone(uId) != null) {
-                        user.setPhone(FirebaseConnector.getInstance().getPhone(uId));
-                    }
-                    api_key = HashGen.getInstance().generate(user.getUId());
-                    user.setUId(uId);
-                    user.setApiKey(api_key);
-                    user.setCheckCount(0);
-                    userRepository.save(user);
-                    return new ResponseEntity<String>(HttpStatus.OK);
+                if (FirebaseConnector.getInstance().getEmail(uId) != null) {
+                    user.setEmail(FirebaseConnector.getInstance().getEmail(uId));
                 }
-            } catch (FirebaseAuthException e) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+                if (FirebaseConnector.getInstance().getPhone(uId) != null) {
+                    user.setPhone(FirebaseConnector.getInstance().getPhone(uId));
+                }
+                api_key = HashGen.getInstance().generate(user.getUId());
+                user.setSent(false);
+                user.setUId(uId);
+                user.setApiKey(api_key);
+                user.setCheckCount(0);
+                userRepository.save(user);
+                return ResponseEntity.status(HttpStatus.OK).body("Confirmed");
             }
+        } catch (FirebaseAuthException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
         }
 
         return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
+    }
+
+    @GetMapping("/key/{uId}")
+    @ResponseBody ResponseEntity<String> getKey(@PathVariable String uId) {
+        User user = userRepository.findByUid(uId);
+        if (user != null) {
+            if (!user.isSent()) {
+                user.setSent(true);
+                userRepository.save(user);
+                return ResponseEntity.status(HttpStatus.OK).body(user.getApiKey());
+            } else {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("The key you are asking for is already in use.");
+            }
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid argument.");
     }
 
     @PostMapping("/add_user")
