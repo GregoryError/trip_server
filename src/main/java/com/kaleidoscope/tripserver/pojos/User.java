@@ -17,6 +17,14 @@ public class User {
     private String uId;
     @JsonProperty("email")
     private String email;
+    @JsonProperty("phone")
+    private String phone;
+
+    private String ApiKey;
+    private boolean sent;
+    private boolean received;
+    private int checkCount = 0;
+
     @JsonProperty("fName")
     private String fName;
     @JsonProperty("nName")
@@ -25,8 +33,7 @@ public class User {
     private String lName;
     @JsonProperty("avatarUrl")
     private String avatarUrl;
-    @JsonProperty("phone")
-    private String phone;
+
     @JsonProperty("location")
     private String location;
     @JsonProperty("listOfTags")
