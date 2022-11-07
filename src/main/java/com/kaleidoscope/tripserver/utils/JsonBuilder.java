@@ -11,9 +11,19 @@ import java.util.Map;
 
 public class JsonBuilder {
 
-    public JsonBuilder() {}
+    private static JsonBuilder instance = null;
 
-    public static JSONObject objectsByTags(List tripItemList, List<Integer> userTagsList) {
+    private JsonBuilder() {}
+
+
+    public static JsonBuilder getInstance() {
+        if (instance == null) {
+            instance = new JsonBuilder();
+        }
+        return instance;
+    }
+
+    public JSONObject objectsByTags(List tripItemList, List<Integer> userTagsList) {
         List<Place> placeList = (ArrayList) tripItemList;
         List<Integer> countList = new ArrayList<>();
         JSONObject jsonObject = new JSONObject();

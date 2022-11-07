@@ -22,7 +22,6 @@ public class User {
 
     private String ApiKey;
     private boolean sent;
-    private boolean received;
     private int checkCount = 0;
 
     @JsonProperty("fName")

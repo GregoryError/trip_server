@@ -9,6 +9,9 @@ import com.kaleidoscope.tripserver.repositories.PlaceRepository;
 import com.kaleidoscope.tripserver.repositories.UserRepository;
 import com.kaleidoscope.tripserver.utils.HashGen;
 import com.kaleidoscope.tripserver.utils.JsonBuilder;
+import io.grpc.util.CertificateUtils;
+import org.hibernate.annotations.Comment;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.lang.annotation.Documented;
 import java.nio.file.*;
 import java.util.*;
 
@@ -99,9 +103,18 @@ public class MainController {
         User user = userRepository.findByUid(uId);
         if (user != null) {
             if (!user.isSent()) {
+                Map<String, String> map = new HashMap<>();
+                map.put("key", user.getApiKey());
+                map.put("id", Long.toString(user.getId()));
+
                 user.setSent(true);
                 userRepository.save(user);
-                return ResponseEntity.status(HttpStatus.OK).body(user.getApiKey());
+
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("user", map);
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
+
+               // return ResponseEntity.status(HttpStatus.OK).body(user.getApiKey());
             } else {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("The key you are asking for is already in use.");
             }
@@ -109,10 +122,23 @@ public class MainController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid argument.");
     }
 
-    @PostMapping("/add_user")
+
+    @PostMapping("/add_user_info")
     public @ResponseBody ResponseEntity<Objects> addNewUser(@RequestBody User user) {
-        userRepository.save(user);
-        return new ResponseEntity<Objects>(HttpStatus.OK);
+        if (user != null) {
+            if (userRepository.findById(user.getId()).isPresent()) {
+                User tempUser = userRepository.findById(user.getId()).get();
+                tempUser.setListOfTags(user.getListOfTags());
+                tempUser.setFName(user.getFName());
+                tempUser.setNName(user.getNName());
+                tempUser.setLName(user.getLName());
+                tempUser.setLocation(user.getLocation());
+                tempUser.setInfo(user.getInfo());
+                userRepository.save(tempUser);
+                return new ResponseEntity<Objects>(HttpStatus.OK);
+            }
+        }
+        return new ResponseEntity<Objects>(HttpStatus.NO_CONTENT);
     }
 
     @PostMapping("/addImage")
@@ -183,7 +209,7 @@ public class MainController {
             presenter.setLocationName(user.getLocation()); // TODO: convert coordinates to name of place
 
             // List of advisable places for this user based on tags TODO: add rating (likes)
-            presenter.setAdvicePlacesJson(JsonBuilder
+            presenter.setAdvicePlacesJson(JsonBuilder.getInstance()
                     .objectsByTags((List) placeRepository.findAll(),
                             user.getListOfTags()).toString());
             // List of advisable Trips for this user based on tags TODO: add rating (likes)
