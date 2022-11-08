@@ -1,5 +1,7 @@
 package com.kaleidoscope.tripserver.utils;
 
+import org.apache.commons.codec.binary.Hex;
+
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
@@ -24,12 +26,12 @@ public class HashGen {
         key_builder.append(DateTimeFormatter
                 .ofPattern("yyyy/MM/dd HH:mm:ss")
                 .format(LocalDateTime.now()));
-        key_builder.append("." + uId + ".Iam a teapot");
+        key_builder.append("." + uId);
         try {
             MessageDigest messageDigest = MessageDigest.getInstance("MD5");
-            System.out.println("Salt: " + key_builder.toString());
             messageDigest.update(key_builder.toString().getBytes());
-            api_key = new String(messageDigest.digest());
+            messageDigest.update(".Iam a teapot".getBytes());
+            api_key = String.valueOf(Hex.encodeHex(messageDigest.digest()));
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }

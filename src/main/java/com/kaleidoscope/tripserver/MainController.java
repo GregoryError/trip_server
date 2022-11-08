@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.lang.annotation.Documented;
 import java.nio.file.*;
@@ -40,6 +41,12 @@ public class MainController {
     // TODO: Adjust media storage
     private static final String UPLOAD_DIR = "/Users/user/IdeaProjects/tripserver/uploads/";
     private Path path;
+
+    @GetMapping("")
+    ResponseEntity<String> whitePage() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("So, what are you looking for?");
+    }
+
 
     @PostMapping("/login")
     public @ResponseBody ResponseEntity<String> login(@RequestParam("username") String username,
@@ -99,7 +106,8 @@ public class MainController {
     }
 
     @GetMapping("/key/{uId}")
-    @ResponseBody ResponseEntity<String> getKey(@PathVariable String uId) {
+    @ResponseBody
+    ResponseEntity<String> getKey(@PathVariable String uId) {
         User user = userRepository.findByUid(uId);
         if (user != null) {
             if (!user.isSent()) {
@@ -108,13 +116,14 @@ public class MainController {
                 map.put("id", Long.toString(user.getId()));
 
                 user.setSent(true);
+                user.setRequestCount(0);
                 userRepository.save(user);
 
                 JSONObject jsonObject = new JSONObject();
                 jsonObject.put("user", map);
                 return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
 
-               // return ResponseEntity.status(HttpStatus.OK).body(user.getApiKey());
+                // return ResponseEntity.status(HttpStatus.OK).body(user.getApiKey());
             } else {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("The key you are asking for is already in use.");
             }
@@ -134,6 +143,10 @@ public class MainController {
                 tempUser.setLName(user.getLName());
                 tempUser.setLocation(user.getLocation());
                 tempUser.setInfo(user.getInfo());
+                tempUser.setPlaces(user.getPlaces());
+                tempUser.setStories(user.getStories());
+                tempUser.setTrips(user.getTrips());
+                tempUser.setFriends(user.getFriends());
                 userRepository.save(tempUser);
                 return new ResponseEntity<Objects>(HttpStatus.OK);
             }
@@ -180,8 +193,15 @@ public class MainController {
     }
 
     @GetMapping("/user/{id}")
-    public @ResponseBody Optional<User> getUser(@PathVariable Long id) {
-        return userRepository.findById(id);
+    public @ResponseBody Optional<User> getUser(@RequestHeader("api_key") String api_key,
+                                                @PathVariable Long id) {
+        if (authorize(api_key, id)) {
+            User user = userRepository.findById(id).get();
+            user.setUId("");
+            user.setApiKey("");
+            return Optional.of(user);
+        }
+        return null;
     }
 
     @PostMapping("/add_place")
@@ -218,6 +238,23 @@ public class MainController {
 
         return presenter;
     }
+
+    private boolean authorize(String api_key, long id) {
+        User user = null;
+        if (userRepository.findById(id).isPresent())
+            user = userRepository.findById(id).get();
+        if (user != null) {
+            if (user.isSent())
+                if (user.getRequestCount() < 15)
+                    if (api_key.equals(user.getApiKey())) {
+                        user.setRequestCount(user.getRequestCount() + 1);
+                        userRepository.save(user);
+                        return true;
+                    }
+        }
+        return false;
+    }
+
 }
 
 

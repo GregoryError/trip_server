@@ -23,6 +23,7 @@ public class User {
     private String ApiKey;
     private boolean sent;
     private int checkCount = 0;
+    private int requestCount = 0;
 
     @JsonProperty("fName")
     private String fName;
