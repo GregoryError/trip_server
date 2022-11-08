@@ -9,20 +9,17 @@ import com.kaleidoscope.tripserver.repositories.PlaceRepository;
 import com.kaleidoscope.tripserver.repositories.UserRepository;
 import com.kaleidoscope.tripserver.utils.HashGen;
 import com.kaleidoscope.tripserver.utils.JsonBuilder;
-import io.grpc.util.CertificateUtils;
-import org.hibernate.annotations.Comment;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.lang.annotation.Documented;
 import java.nio.file.*;
 import java.util.*;
 
@@ -30,7 +27,7 @@ import java.util.*;
 //
 //
 
-@RestController
+@Controller
 //@RequestMapping("/data")
 public class MainController {
     @Autowired
@@ -42,11 +39,16 @@ public class MainController {
     private static final String UPLOAD_DIR = "/Users/user/IdeaProjects/tripserver/uploads/";
     private Path path;
 
-    @GetMapping("")
-    ResponseEntity<String> whitePage() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("So, what are you looking for?");
+    @RequestMapping("/")
+    public String index() {
+        return "/docs/MainController.html";
     }
 
+//    @GetMapping("/docs")
+//    String whitePage() {
+//        return "MainController";
+//        //return ResponseEntity.status(HttpStatus.FORBIDDEN).body("So, what are you looking for?");
+//    }
 
     @PostMapping("/login")
     public @ResponseBody ResponseEntity<String> login(@RequestParam("username") String username,
@@ -63,15 +65,15 @@ public class MainController {
             e.printStackTrace();
         }
 
-        String api_key = null;
+        String apiKey = null;
 
         if (user != null) {
             if ((user.getEmail() != null && user.getEmail().equals(username)) ||
                     (user.getPhone() != null && user.getPhone().equals(username))) {
                 if (user.getCheckCount() < 5) {
-                    api_key = HashGen.getInstance().generate(uId);
+                    apiKey = HashGen.getInstance().generate(uId);
                     user.setSent(false);
-                    user.setApiKey(api_key);
+                    user.setApiKey(apiKey);
                     user.setCheckCount(user.getCheckCount() + 1);
                     userRepository.save(user);
                     return ResponseEntity.status(HttpStatus.OK).body("Locally confirmed");
@@ -90,10 +92,10 @@ public class MainController {
                 if (FirebaseConnector.getInstance().getPhone(uId) != null) {
                     user.setPhone(FirebaseConnector.getInstance().getPhone(uId));
                 }
-                api_key = HashGen.getInstance().generate(user.getUId());
+                apiKey = HashGen.getInstance().generate(user.getUId());
                 user.setSent(false);
                 user.setUId(uId);
-                user.setApiKey(api_key);
+                user.setApiKey(apiKey);
                 user.setCheckCount(0);
                 userRepository.save(user);
                 return ResponseEntity.status(HttpStatus.OK).body("Confirmed");
@@ -131,65 +133,77 @@ public class MainController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid argument.");
     }
 
-
     @PostMapping("/add_user_info")
-    public @ResponseBody ResponseEntity<Objects> addNewUser(@RequestBody User user) {
-        if (user != null) {
-            if (userRepository.findById(user.getId()).isPresent()) {
-                User tempUser = userRepository.findById(user.getId()).get();
-                tempUser.setListOfTags(user.getListOfTags());
-                tempUser.setFName(user.getFName());
-                tempUser.setNName(user.getNName());
-                tempUser.setLName(user.getLName());
-                tempUser.setLocation(user.getLocation());
-                tempUser.setInfo(user.getInfo());
-                tempUser.setPlaces(user.getPlaces());
-                tempUser.setStories(user.getStories());
-                tempUser.setTrips(user.getTrips());
-                tempUser.setFriends(user.getFriends());
-                userRepository.save(tempUser);
-                return new ResponseEntity<Objects>(HttpStatus.OK);
+    public @ResponseBody ResponseEntity<Objects> addNewUser(@RequestHeader("api_key") String api_key,
+                                                            @RequestBody User user) {
+        if (user != null)
+            if (authorize(api_key, user.getId())) {
+                if (userRepository.findById(user.getId()).isPresent()) {
+                    User tempUser = userRepository.findById(user.getId()).get();
+                    tempUser.setListOfTags(user.getListOfTags());
+                    tempUser.setFName(user.getFName());
+                    tempUser.setNName(user.getNName());
+                    tempUser.setLName(user.getLName());
+                    tempUser.setLocation(user.getLocation());
+                    tempUser.setInfo(user.getInfo());
+                    tempUser.setPlaces(user.getPlaces());
+                    tempUser.setStories(user.getStories());
+                    tempUser.setTrips(user.getTrips());
+                    tempUser.setFriends(user.getFriends());
+                    userRepository.save(tempUser);
+                    return new ResponseEntity<Objects>(HttpStatus.OK);
+                }
+                return new ResponseEntity<Objects>(HttpStatus.NO_CONTENT);
             }
-        }
-        return new ResponseEntity<Objects>(HttpStatus.NO_CONTENT);
+        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
     }
 
     @PostMapping("/addImage")
-    public @ResponseBody ResponseEntity<Objects> addImage(@RequestParam("file") MultipartFile file) {
+    public @ResponseBody ResponseEntity<Objects> addImage(@RequestHeader("api_key") String api_key,
+                                                          @PathVariable Long id,
+                                                          @RequestParam("file") MultipartFile file) {
         // TODO: Adjust media storage
-        String originFileName = null;
-        if (!file.isEmpty()) {
-            if (file.getOriginalFilename() != null) {
-                originFileName = file.getOriginalFilename();
+        if (authorize(api_key, id)) {
+            String originFileName = null;
+            if (!file.isEmpty()) {
+                if (file.getOriginalFilename() != null) {
+                    originFileName = file.getOriginalFilename();
+                }
             }
-        }
 
-        String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
+            String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
 
-        try {
-            path = Paths.get(UPLOAD_DIR + fileName);
-            Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
-            return new ResponseEntity<Objects>(HttpStatus.OK);
-        } catch (IOException e) {
-            e.printStackTrace();
+            try {
+                path = Paths.get(UPLOAD_DIR + fileName);
+                Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+                return new ResponseEntity<Objects>(HttpStatus.OK);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return new ResponseEntity<Objects>(HttpStatus.EXPECTATION_FAILED);
         }
-        return new ResponseEntity<Objects>(HttpStatus.EXPECTATION_FAILED);
+        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
     }
 
     @GetMapping("/image/{name}")
     @ResponseBody
-    public ResponseEntity<byte[]> getImage(@PathVariable String name) {
-        path = Paths.get(UPLOAD_DIR + name + ".jpeg");
-        byte[] imageBytes = new byte[0];
-        try {
-            imageBytes = Files.readAllBytes(path);
-            return ResponseEntity.ok()
-                    .contentType(MediaType.IMAGE_JPEG)
-                    .body(imageBytes);
-        } catch (IOException e) {
-            e.printStackTrace();
+    public ResponseEntity<byte[]> getImage(@RequestHeader("api_key") String api_key,
+                                           @PathVariable Long id,
+                                           @PathVariable String name) {
+        if (authorize(api_key, id)) {
+            path = Paths.get(UPLOAD_DIR + name + ".jpeg");
+            byte[] imageBytes = new byte[0];
+            try {
+                imageBytes = Files.readAllBytes(path);
+                return ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_JPEG)
+                        .body(imageBytes);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
     }
 
     @GetMapping("/user/{id}")
@@ -205,14 +219,15 @@ public class MainController {
     }
 
     @PostMapping("/add_place")
-    public @ResponseBody ResponseEntity<Objects> addNewPlace(@RequestBody Place place) {
-        System.out.println("PLACE: " +
-                place.toString());
-
+    public @ResponseBody ResponseEntity<Objects> addNewPlace(@RequestHeader("api_key") String api_key,
+                                                             @PathVariable Long id,
+                                                             @RequestBody Place place) {
         // TODO: implement check the length of 'description'
-
-        placeRepository.save(place);
-        return new ResponseEntity<Objects>(HttpStatus.OK);
+        if (authorize(api_key, id)) {
+            placeRepository.save(place);
+            return new ResponseEntity<Objects>(HttpStatus.OK);
+        }
+        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
     }
 
     @GetMapping("/place/{id}")
@@ -221,22 +236,26 @@ public class MainController {
     }
 
     @GetMapping("/main/{id}")
-    public @ResponseBody MainPresenter getMainContent(@PathVariable Long id) {
-        MainPresenter presenter = new MainPresenter();
-        User user;
-        if (userRepository.findById(id).isPresent()) {
-            user = userRepository.findById(id).get();
-            presenter.setLocationName(user.getLocation()); // TODO: convert coordinates to name of place
+    public @ResponseBody MainPresenter getMainContent(@RequestHeader("api_key") String api_key,
+                                                      @PathVariable Long id) {
+        if (authorize(api_key, id)) {
+            MainPresenter presenter = new MainPresenter();
+            User user;
+            if (userRepository.findById(id).isPresent()) {
+                user = userRepository.findById(id).get();
+                presenter.setLocationName(user.getLocation()); // TODO: convert coordinates to name of place
 
-            // List of advisable places for this user based on tags TODO: add rating (likes)
-            presenter.setAdvicePlacesJson(JsonBuilder.getInstance()
-                    .objectsByTags((List) placeRepository.findAll(),
-                            user.getListOfTags()).toString());
-            // List of advisable Trips for this user based on tags TODO: add rating (likes)
+                // List of advisable places for this user based on tags TODO: add rating (likes)
+                presenter.setAdvicePlacesJson(JsonBuilder.getInstance()
+                        .objectsByTags((List) placeRepository.findAll(),
+                                user.getListOfTags()).toString());
+                // List of advisable Trips for this user based on tags TODO: add rating (likes)
 
+            }
+
+            return presenter;
         }
-
-        return presenter;
+        return null;
     }
 
     private boolean authorize(String api_key, long id) {
