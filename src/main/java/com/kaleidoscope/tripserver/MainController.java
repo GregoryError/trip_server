@@ -3,9 +3,11 @@ package com.kaleidoscope.tripserver;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.kaleidoscope.tripserver.networkutils.FirebaseConnector;
 import com.kaleidoscope.tripserver.pojos.Place;
-import com.kaleidoscope.tripserver.pojos.User;
+import com.kaleidoscope.tripserver.pojos.AppUser;
+import com.kaleidoscope.tripserver.pojos.Trip;
 import com.kaleidoscope.tripserver.presenters.MainPresenter;
 import com.kaleidoscope.tripserver.repositories.PlaceRepository;
+import com.kaleidoscope.tripserver.repositories.TripRepository;
 import com.kaleidoscope.tripserver.repositories.UserRepository;
 import com.kaleidoscope.tripserver.utils.HashGen;
 import com.kaleidoscope.tripserver.utils.JsonBuilder;
@@ -24,8 +26,6 @@ import java.nio.file.*;
 import java.util.*;
 
 // TODO: connection to Firebase (check users)
-//
-//
 
 @Controller
 //@RequestMapping("/data")
@@ -34,6 +34,9 @@ public class MainController {
     private UserRepository userRepository;
     @Autowired
     private PlaceRepository placeRepository;
+
+    @Autowired
+    private TripRepository tripRepository;
 
     // TODO: Adjust media storage
     private static final String UPLOAD_DIR = "/Users/user/IdeaProjects/tripserver/uploads/";
@@ -44,12 +47,6 @@ public class MainController {
         return "/docs/MainController.html";
     }
 
-//    @GetMapping("/docs")
-//    String whitePage() {
-//        return "MainController";
-//        //return ResponseEntity.status(HttpStatus.FORBIDDEN).body("So, what are you looking for?");
-//    }
-
     @PostMapping("/login")
     public @ResponseBody ResponseEntity<String> login(@RequestParam("username") String username,
                                                       @RequestParam("uId") String uId) {
@@ -57,47 +54,48 @@ public class MainController {
         // TODO: Request to Firebase once in a 5 times
         // TODO: if the user exist, generate API key for him and send "OK status"
 
-        User user = null;
+        AppUser appUser = null;
 
-        try {
-            user = userRepository.findByUid((uId));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+
+        if (userRepository.count() > 0)
+            if (userRepository.findByUid(uId).isPresent())
+                appUser = userRepository.findByUid((uId)).get();
+
 
         String apiKey = null;
 
-        if (user != null) {
-            if ((user.getEmail() != null && user.getEmail().equals(username)) ||
-                    (user.getPhone() != null && user.getPhone().equals(username))) {
-                if (user.getCheckCount() < 5) {
+        if (appUser != null) {
+            if ((appUser.getEmail() != null && appUser.getEmail().equals(username)) ||
+                    (appUser.getPhone() != null && appUser.getPhone().equals(username))) {
+                if (appUser.getCheckCount() < 5) {
                     apiKey = HashGen.getInstance().generate(uId);
-                    user.setSent(false);
-                    user.setApiKey(apiKey);
-                    user.setCheckCount(user.getCheckCount() + 1);
-                    userRepository.save(user);
+                    appUser.setSent(false);
+                    appUser.setApiKey(apiKey);
+                    appUser.setCheckCount(appUser.getCheckCount() + 1);
+                    userRepository.save(appUser);
                     return ResponseEntity.status(HttpStatus.OK).body("Locally confirmed");
                 }
             }
         } else {
-            user = new User();
+            appUser = new AppUser();
         }
         try {
             if (FirebaseConnector.getInstance().checkUser(username, uId)) {
                 System.out.println("Firebase checking");
 
                 if (FirebaseConnector.getInstance().getEmail(uId) != null) {
-                    user.setEmail(FirebaseConnector.getInstance().getEmail(uId));
+                    appUser.setEmail(FirebaseConnector.getInstance().getEmail(uId));
                 }
                 if (FirebaseConnector.getInstance().getPhone(uId) != null) {
-                    user.setPhone(FirebaseConnector.getInstance().getPhone(uId));
+                    appUser.setPhone(FirebaseConnector.getInstance().getPhone(uId));
                 }
-                apiKey = HashGen.getInstance().generate(user.getUId());
-                user.setSent(false);
-                user.setUId(uId);
-                user.setApiKey(apiKey);
-                user.setCheckCount(0);
-                userRepository.save(user);
+
+                apiKey = HashGen.getInstance().generate(appUser.getUId());
+                appUser.setSent(false);
+                appUser.setUId(uId);
+                appUser.setApiKey(apiKey);
+                appUser.setCheckCount(0);
+                userRepository.save(appUser);
                 return ResponseEntity.status(HttpStatus.OK).body("Confirmed");
             }
         } catch (FirebaseAuthException e) {
@@ -110,16 +108,19 @@ public class MainController {
     @GetMapping("/key/{uId}")
     @ResponseBody
     ResponseEntity<String> getKey(@PathVariable String uId) {
-        User user = userRepository.findByUid(uId);
-        if (user != null) {
-            if (!user.isSent()) {
+        AppUser appUser = null;
+        if (userRepository.count() > 0)
+            if (userRepository.findByUid(uId).isPresent())
+                appUser = userRepository.findByUid(uId).get();
+        if (appUser != null) {
+            if (!appUser.isSent()) {
                 Map<String, String> map = new HashMap<>();
-                map.put("key", user.getApiKey());
-                map.put("id", Long.toString(user.getId()));
+                map.put("key", appUser.getApiKey());
+                map.put("id", Long.toString(appUser.getId()));
 
-                user.setSent(true);
-                user.setRequestCount(0);
-                userRepository.save(user);
+                appUser.setSent(true);
+                appUser.setRequestCount(0);
+                userRepository.save(appUser);
 
                 JSONObject jsonObject = new JSONObject();
                 jsonObject.put("user", map);
@@ -135,22 +136,22 @@ public class MainController {
 
     @PostMapping("/add_user_info")
     public @ResponseBody ResponseEntity<Objects> addNewUser(@RequestHeader("api_key") String api_key,
-                                                            @RequestBody User user) {
-        if (user != null)
-            if (authorize(api_key, user.getId())) {
-                if (userRepository.findById(user.getId()).isPresent()) {
-                    User tempUser = userRepository.findById(user.getId()).get();
-                    tempUser.setListOfTags(user.getListOfTags());
-                    tempUser.setFName(user.getFName());
-                    tempUser.setNName(user.getNName());
-                    tempUser.setLName(user.getLName());
-                    tempUser.setLocation(user.getLocation());
-                    tempUser.setInfo(user.getInfo());
-                    tempUser.setPlaces(user.getPlaces());
-                    tempUser.setStories(user.getStories());
-                    tempUser.setTrips(user.getTrips());
-                    tempUser.setFriends(user.getFriends());
-                    userRepository.save(tempUser);
+                                                            @RequestBody AppUser appUser) {
+        if (appUser != null)
+            if (authorize(api_key, appUser.getId())) {
+                if (userRepository.findById(appUser.getId()).isPresent()) {
+                    AppUser tempAppUser = userRepository.findById(appUser.getId()).get();
+                    tempAppUser.setListOfTags(appUser.getListOfTags());
+                    tempAppUser.setFName(appUser.getFName());
+                    tempAppUser.setNName(appUser.getNName());
+                    tempAppUser.setLName(appUser.getLName());
+                    tempAppUser.setLocation(appUser.getLocation());
+                    tempAppUser.setInfo(appUser.getInfo());
+                    tempAppUser.setPlaces(appUser.getPlaces());
+                    tempAppUser.setStories(appUser.getStories());
+                    tempAppUser.setTrips(appUser.getTrips());
+                    tempAppUser.setFriends(appUser.getFriends());
+                    userRepository.save(tempAppUser);
                     return new ResponseEntity<Objects>(HttpStatus.OK);
                 }
                 return new ResponseEntity<Objects>(HttpStatus.NO_CONTENT);
@@ -207,20 +208,20 @@ public class MainController {
     }
 
     @GetMapping("/user/{id}")
-    public @ResponseBody Optional<User> getUser(@RequestHeader("api_key") String api_key,
-                                                @PathVariable Long id) {
+    public @ResponseBody Optional<AppUser> getUser(@RequestHeader("api_key") String api_key,
+                                                   @PathVariable Long id) {
         if (authorize(api_key, id)) {
-            User user = userRepository.findById(id).get();
-            user.setUId("");
-            user.setApiKey("");
-            return Optional.of(user);
+            AppUser appUser = userRepository.findById(id).get();
+            appUser.setUId("");
+            appUser.setApiKey("");
+            return Optional.of(appUser);
         }
         return null;
     }
 
     @PostMapping("/add_place")
     public @ResponseBody ResponseEntity<Objects> addNewPlace(@RequestHeader("api_key") String api_key,
-                                                             @PathVariable Long id,
+                                                             @RequestHeader("id") Long id,
                                                              @RequestBody Place place) {
         // TODO: implement check the length of 'description'
         if (authorize(api_key, id)) {
@@ -240,16 +241,26 @@ public class MainController {
                                                       @PathVariable Long id) {
         if (authorize(api_key, id)) {
             MainPresenter presenter = new MainPresenter();
-            User user;
+            AppUser appUser = null;
             if (userRepository.findById(id).isPresent()) {
-                user = userRepository.findById(id).get();
-                presenter.setLocationName(user.getLocation()); // TODO: convert coordinates to name of place
+                appUser = userRepository.findById(id).get();
+                presenter.setLocationName(appUser.getLocation()); // TODO: convert coordinates to name of place
 
-                // List of advisable places for this user based on tags TODO: add rating (likes)
+                // List of advisable places for this user based on tags
                 presenter.setAdvicePlacesJson(JsonBuilder.getInstance()
-                        .objectsByTags((List) placeRepository.findAll(),
-                                user.getListOfTags()).toString());
-                // List of advisable Trips for this user based on tags TODO: add rating (likes)
+                        .placesByTags((List) placeRepository.findAll(),
+                                appUser.getListOfTags()).toString());
+
+                // List of advisable Trips for this user based on rating (likes) and tags
+//                presenter.setTopTripsJson(JsonBuilder.getInstance()
+//                        .objectsByRatingAndTags((List) tripRepository.findAll(),
+//                                appUser.getListOfTags()).toString());
+
+                // List of advisable Places for this user based on rating (likes) and tags
+                presenter.setTopPlacesJson(JsonBuilder.getInstance()
+                        .objectsByRatingAndTags((List) placeRepository.findAll(),
+                                appUser.getListOfTags()).toString());
+
 
             }
 
@@ -259,15 +270,15 @@ public class MainController {
     }
 
     private boolean authorize(String api_key, long id) {
-        User user = null;
+        AppUser appUser = null;
         if (userRepository.findById(id).isPresent())
-            user = userRepository.findById(id).get();
-        if (user != null) {
-            if (user.isSent())
-                if (user.getRequestCount() < 15)
-                    if (api_key.equals(user.getApiKey())) {
-                        user.setRequestCount(user.getRequestCount() + 1);
-                        userRepository.save(user);
+            appUser = userRepository.findById(id).get();
+        if (appUser != null) {
+            if (appUser.isSent())
+                if (appUser.getRequestCount() < 15)
+                    if (api_key.equals(appUser.getApiKey())) {
+                        appUser.setRequestCount(appUser.getRequestCount() + 1);
+                        userRepository.save(appUser);
                         return true;
                     }
         }

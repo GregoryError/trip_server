@@ -1,19 +1,17 @@
 package com.kaleidoscope.tripserver.utils;
 
-import com.kaleidoscope.tripserver.pojos.Place;
+import com.kaleidoscope.tripserver.pojos.Trip;
 import com.kaleidoscope.tripserver.pojos.TripItem;
 import org.json.JSONObject;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class JsonBuilder {
 
     private static JsonBuilder instance = null;
 
-    private JsonBuilder() {}
+    private JsonBuilder() {
+    }
 
 
     public static JsonBuilder getInstance() {
@@ -23,45 +21,75 @@ public class JsonBuilder {
         return instance;
     }
 
-    public JSONObject objectsByTags(List tripItemList, List<Integer> userTagsList) {
-        List<Place> placeList = (ArrayList) tripItemList;
-        List<Integer> countList = new ArrayList<>();
-        JSONObject jsonObject = new JSONObject();
-        int order = 0;
-        Map<String, String> jsonObjectPlace = new HashMap<>();
-        for (Place place : placeList) {
+    public List<TripItem> objectsByTags(List<TripItem> tripItemList, List<Integer> userTagsList) {
+        List<TripItem> itemList = new ArrayList<>();
 
+        List<Integer> countList = new ArrayList<>();
+        for (TripItem item : tripItemList) {
             int count = 0;
-            List<Integer> placeTags = place.getTags();
-            for (int i = 0; i < placeTags.size(); ++i) {
-                if (userTagsList.contains(placeTags.get(i))) {
+            List<Integer> itemTags = item.getTags();
+            for (int i = 0; i < itemTags.size(); ++i) {
+                if (userTagsList.contains(itemTags.get(i))) {
                     ++count;
                 }
             }
             countList.add(count);
         }
 
-        for (int j = 0; j < placeList.size(); ++j) {
-            int index = 0;
+        System.out.println("CountList: " + countList);
+        System.out.println("tripItemList size: " + tripItemList.size());
+
+
+        int index = -1;
+        int max = -1;
+
+        for (int j = 0; j < tripItemList.size(); ++j) {
+            index = -1;
+            max = -1;
             for (int i = 0; i < countList.size(); ++i) {
-                int max = 0;
                 if (countList.get(i) > max) {
                     max = countList.get(i);
                     index = i;
                 }
             }
 
-            jsonObjectPlace.put("name", placeList.get(index).getName());
-            jsonObjectPlace.put("imageUrl", placeList.get(index).getImageUrl());
-            jsonObjectPlace.put("id", Long.toString(placeList.get(index).getId()));
-            jsonObject.put(Integer.toString(order++), jsonObjectPlace);
-            jsonObjectPlace.clear();
+            if (index > -1) {
+                itemList.add(tripItemList.get(index));
+                countList.remove(index);
+                countList.add(index, -1);
+            }
+        }
 
-            countList.remove(index);
-            countList.add(index, -1);
+        return itemList;
+    }
+
+    private JSONObject jsonFromTripItemList(List<TripItem> tripItemList) {
+        JSONObject jsonObject = new JSONObject();
+        Map<String, String> jsonObjectItem = new HashMap<>();
+        int order = 0;
+
+        for (TripItem item : tripItemList) {
+            jsonObjectItem.put("name", item.getName());
+            jsonObjectItem.put("imageUrl", item.getImageUrl());
+            jsonObjectItem.put("id", Long.toString(item.getId()));
+            jsonObject.put(Integer.toString(order++), jsonObjectItem);
+            jsonObjectItem.clear();
         }
         return jsonObject;
     }
+
+    public JSONObject placesByTags(List tripItemList, List<Integer> userTagsList) {
+        List<TripItem> placeList = objectsByTags(tripItemList, userTagsList);
+        return jsonFromTripItemList(placeList);
+    }
+
+    public JSONObject objectsByRatingAndTags(List tripItemList, List<Integer> userTagsList) {
+        List<TripItem> tripList = objectsByTags(tripItemList, userTagsList);
+        tripList.sort((o1, o2) -> (o1.getLikes() <= o2.getLikes()) ? 0 : -1);
+        return jsonFromTripItemList(tripList);
+    }
+
+
 }
 
 
