@@ -31,8 +31,6 @@ public class AppUser {
     private String nName;
     @JsonProperty("lName")
     private String lName;
-    @JsonProperty("avatarUrl")
-    private String avatarUrl;
 
     @JsonProperty("location")
     private String location;

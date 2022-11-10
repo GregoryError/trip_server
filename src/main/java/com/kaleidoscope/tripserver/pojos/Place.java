@@ -22,8 +22,6 @@ public class Place implements TripItem {
     @JsonProperty("tags")
     @ElementCollection(targetClass = Integer.class)
     private List<Integer> tags;
-    @JsonProperty("imageUrl")
-    private String imageUrl;
     @JsonProperty("imageUrls")
     @ElementCollection(targetClass = String.class)
     private List<String> imageUrls;
@@ -62,11 +60,6 @@ public class Place implements TripItem {
     @Override
     public List<Integer> getTags() {
         return tags;
-    }
-
-    @Override
-    public String getImageUrl() {
-        return imageUrl;
     }
 
     public List<String> getImageUrls() {
@@ -113,10 +106,6 @@ public class Place implements TripItem {
     @Override
     public void setTags(List<Integer> tags) {
         this.tags = tags;
-    }
-
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
     }
 
     public void setImageUrls(List<String> imageUrls) {

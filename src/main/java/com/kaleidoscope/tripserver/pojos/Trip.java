@@ -16,15 +16,24 @@ public class Trip implements TripItem {
     private long id;
     @JsonProperty("name")
     private String name;
-    @JsonProperty("location")
-    private String location;
+
+    public List<Long> getPlacesList() {
+        return placesList;
+    }
+
+    public void setPlacesList(List<Long> placesList) {
+        this.placesList = placesList;
+    }
+
+    @JsonProperty("placesList")
+    @ElementCollection(targetClass = Long.class)
+    List<Long> placesList;
+
     @JsonProperty("contacts")
     private String contacts;
     @JsonProperty("tags")
     @ElementCollection(targetClass = Integer.class)
     private List<Integer> tags;
-    @JsonProperty("imageUrl")
-    private String imageUrl;
     @JsonProperty("imageUrls")
     @ElementCollection(targetClass = String.class)
     private List<String> imageUrls;
@@ -52,10 +61,6 @@ public class Trip implements TripItem {
         return name;
     }
 
-    public String getLocation() {
-        return location;
-    }
-
     public String getContacts() {
         return contacts;
     }
@@ -63,11 +68,6 @@ public class Trip implements TripItem {
     @Override
     public List<Integer> getTags() {
         return tags;
-    }
-
-    @Override
-    public String getImageUrl() {
-        return imageUrl;
     }
 
     public List<String> getImageUrls() {
@@ -103,10 +103,6 @@ public class Trip implements TripItem {
         this.name = name;
     }
 
-    public void setLocation(String location) {
-        this.location = location;
-    }
-
     public void setContacts(String contacts) {
         this.contacts = contacts;
     }
@@ -114,10 +110,6 @@ public class Trip implements TripItem {
     @Override
     public void setTags(List<Integer> tags) {
         this.tags = tags;
-    }
-
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
     }
 
     public void setImageUrls(List<String> imageUrls) {

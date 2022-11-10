@@ -107,7 +107,7 @@ public class MainController {
 
     @GetMapping("/key/{uId}")
     @ResponseBody
-    ResponseEntity<String> getKey(@PathVariable String uId) {
+    public ResponseEntity<String> getKey(@PathVariable String uId) {
         AppUser appUser = null;
         if (userRepository.count() > 0)
             if (userRepository.findByUid(uId).isPresent())
@@ -236,6 +236,23 @@ public class MainController {
         return placeRepository.findById(id);
     }
 
+    @PostMapping("/add_trip")
+    public @ResponseBody ResponseEntity<Objects> addNewTrip(@RequestHeader("api_key") String api_key,
+                                                             @RequestHeader("id") Long id,
+                                                             @RequestBody Trip trip) {
+        // TODO: implement check the length of 'description'
+        if (authorize(api_key, id)) {
+            tripRepository.save(trip);
+            return new ResponseEntity<Objects>(HttpStatus.OK);
+        }
+        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
+    }
+
+    @GetMapping("/trip/{id}")
+    public @ResponseBody Optional<Trip> getTrip(@PathVariable Long id) {
+        return tripRepository.findById(id);
+    }
+
     @GetMapping("/main/{id}")
     public @ResponseBody MainPresenter getMainContent(@RequestHeader("api_key") String api_key,
                                                       @PathVariable Long id) {
@@ -244,6 +261,10 @@ public class MainController {
             AppUser appUser = null;
             if (userRepository.findById(id).isPresent()) {
                 appUser = userRepository.findById(id).get();
+
+                presenter.setHeadImgUrl("TODO: current place image");
+
+                // Place of current User location
                 presenter.setLocationName(appUser.getLocation()); // TODO: convert coordinates to name of place
 
                 // List of advisable places for this user based on tags
@@ -252,14 +273,16 @@ public class MainController {
                                 appUser.getListOfTags()).toString());
 
                 // List of advisable Trips for this user based on rating (likes) and tags
-//                presenter.setTopTripsJson(JsonBuilder.getInstance()
-//                        .objectsByRatingAndTags((List) tripRepository.findAll(),
-//                                appUser.getListOfTags()).toString());
+                presenter.setTopTripsJson(JsonBuilder.getInstance()
+                        .objectsByRatingAndTags((List) tripRepository.findAll(),
+                                appUser.getListOfTags()).toString());
 
                 // List of advisable Places for this user based on rating (likes) and tags
                 presenter.setTopPlacesJson(JsonBuilder.getInstance()
                         .objectsByRatingAndTags((List) placeRepository.findAll(),
                                 appUser.getListOfTags()).toString());
+
+              // presenter.setStoriesJson();
 
 
             }

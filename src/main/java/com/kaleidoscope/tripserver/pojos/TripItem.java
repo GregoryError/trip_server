@@ -13,7 +13,5 @@ public interface TripItem {
 
     String getName();
 
-    String getImageUrl();
-
     long getId();
 }

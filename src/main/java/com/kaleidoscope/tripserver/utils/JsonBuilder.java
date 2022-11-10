@@ -70,7 +70,6 @@ public class JsonBuilder {
 
         for (TripItem item : tripItemList) {
             jsonObjectItem.put("name", item.getName());
-            jsonObjectItem.put("imageUrl", item.getImageUrl());
             jsonObjectItem.put("id", Long.toString(item.getId()));
             jsonObject.put(Integer.toString(order++), jsonObjectItem);
             jsonObjectItem.clear();
