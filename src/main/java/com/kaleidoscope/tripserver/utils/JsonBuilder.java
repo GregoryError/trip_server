@@ -88,7 +88,6 @@ public class JsonBuilder {
         return jsonFromTripItemList(tripList);
     }
 
-
 }
 
 

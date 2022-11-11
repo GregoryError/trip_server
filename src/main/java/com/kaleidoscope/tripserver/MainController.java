@@ -238,8 +238,8 @@ public class MainController {
 
     @PostMapping("/add_trip")
     public @ResponseBody ResponseEntity<Objects> addNewTrip(@RequestHeader("api_key") String api_key,
-                                                             @RequestHeader("id") Long id,
-                                                             @RequestBody Trip trip) {
+                                                            @RequestHeader("id") Long id,
+                                                            @RequestBody Trip trip) {
         // TODO: implement check the length of 'description'
         if (authorize(api_key, id)) {
             tripRepository.save(trip);
@@ -282,7 +282,7 @@ public class MainController {
                         .objectsByRatingAndTags((List) placeRepository.findAll(),
                                 appUser.getListOfTags()).toString());
 
-              // presenter.setStoriesJson();
+                // presenter.setStoriesJson();
 
 
             }
@@ -290,6 +290,45 @@ public class MainController {
             return presenter;
         }
         return null;
+    }
+
+    @GetMapping("/stories")
+    public ResponseEntity<String> getStories(@RequestHeader("api_key") String api_key,
+                                             @RequestHeader("id") Long id) {
+        if (authorize(api_key, id)) {
+            AppUser appUser = null;
+            if (userRepository.findById(id).isPresent()) {
+                appUser = userRepository.findById(id).get();
+            }
+
+            // Friends of this user
+            List<Long> friends = null;
+            if (appUser != null)
+                friends = appUser.getFriends();
+
+            // Compose Json
+
+            JSONObject jsonObject = new JSONObject();
+            Map<String, String> jsonMap = new HashMap<>();
+            AppUser friendUser = null;
+
+            if (friends != null) {
+                for (Long userId : friends) {
+                    if (userRepository.findById(userId).isPresent() &&
+                            userRepository.findById(userId).get().getStories() > 0) {
+                        friendUser = userRepository.findById(userId).get();
+                        jsonMap.put("id", Long.toString(userId));
+                        jsonMap.put("qt", Integer.toString(friendUser.getStories()));
+                        jsonMap.put("name", friendUser.getNName());
+                        jsonObject.put("stories", jsonMap);
+                        jsonMap.clear();
+                    }
+                }
+            }
+            return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
+
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid argument.");
     }
 
     private boolean authorize(String api_key, long id) {

@@ -24,6 +24,8 @@ public class AppUser {
     private boolean sent;
     private int checkCount = 0;
     private int requestCount = 0;
+    private int stories = 0;
+    private List<Long> friends;
 
     @JsonProperty("fName")
     private String fName;
@@ -46,12 +48,7 @@ public class AppUser {
     @JsonProperty("trips")
     @ElementCollection(targetClass = Long.class)
     private List<Long> trips;
-    @JsonProperty("stories")
-    @ElementCollection(targetClass = Long.class)
-    private List<Long> stories;
-    @JsonProperty("friends")
-    @ElementCollection(targetClass = Long.class)
-    private List<Long> friends;
+
 }
 
 
