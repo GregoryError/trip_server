@@ -25,7 +25,11 @@ public class AppUser {
     private int checkCount = 0;
     private int requestCount = 0;
     private int stories = 0;
+    @ElementCollection(targetClass = Long.class)
     private List<Long> friends;
+    public void addFriend(Long id) {
+        friends.add(id);
+    }
 
     @JsonProperty("fName")
     private String fName;

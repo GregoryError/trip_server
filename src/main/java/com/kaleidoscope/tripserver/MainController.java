@@ -34,7 +34,6 @@ public class MainController {
     private UserRepository userRepository;
     @Autowired
     private PlaceRepository placeRepository;
-
     @Autowired
     private TripRepository tripRepository;
 
@@ -47,15 +46,15 @@ public class MainController {
         return "/docs/MainController.html";
     }
 
+    // The client must provide Firebase credentials
     @PostMapping("/login")
     public @ResponseBody ResponseEntity<String> login(@RequestParam("username") String username,
                                                       @RequestParam("uId") String uId) {
 
-        // TODO: Request to Firebase once in a 5 times
-        // TODO: if the user exist, generate API key for him and send "OK status"
+        // Request to Firebase once in 5 times
+        // If the user exist, generate API key for him and send "OK status"
 
         AppUser appUser = null;
-
 
         if (userRepository.count() > 0)
             if (userRepository.findByUid(uId).isPresent())
@@ -105,6 +104,7 @@ public class MainController {
         return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
     }
 
+    // After the user provided a Firebase credentials (login()), he ask for a api_key here.
     @GetMapping("/key/{uId}")
     @ResponseBody
     public ResponseEntity<String> getKey(@PathVariable String uId) {
@@ -223,10 +223,13 @@ public class MainController {
     public @ResponseBody ResponseEntity<Objects> addNewPlace(@RequestHeader("api_key") String api_key,
                                                              @RequestHeader("id") Long id,
                                                              @RequestBody Place place) {
-        // TODO: implement check the length of 'description'
         if (authorize(api_key, id)) {
-            placeRepository.save(place);
-            return new ResponseEntity<Objects>(HttpStatus.OK);
+            if (place.getDescription().length() < 4000) {
+                placeRepository.save(place);
+                return new ResponseEntity<Objects>(HttpStatus.OK);
+            } else {
+                ResponseEntity.status(HttpStatus.FORBIDDEN).body("The description over-length.");
+            }
         }
         return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
     }
@@ -242,7 +245,12 @@ public class MainController {
                                                             @RequestBody Trip trip) {
         // TODO: implement check the length of 'description'
         if (authorize(api_key, id)) {
-            tripRepository.save(trip);
+            if (trip.getDescription().length() < 7000) {
+                tripRepository.save(trip);
+                return new ResponseEntity<Objects>(HttpStatus.OK);
+            } else {
+                ResponseEntity.status(HttpStatus.FORBIDDEN).body("The description over-length.");
+            }
             return new ResponseEntity<Objects>(HttpStatus.OK);
         }
         return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
@@ -282,8 +290,7 @@ public class MainController {
                         .objectsByRatingAndTags((List) placeRepository.findAll(),
                                 appUser.getListOfTags()).toString());
 
-                // presenter.setStoriesJson();
-
+                presenter.setStoriesJson(getStories(id));
 
             }
 
@@ -292,43 +299,54 @@ public class MainController {
         return null;
     }
 
-    @GetMapping("/stories")
-    public ResponseEntity<String> getStories(@RequestHeader("api_key") String api_key,
-                                             @RequestHeader("id") Long id) {
-        if (authorize(api_key, id)) {
-            AppUser appUser = null;
-            if (userRepository.findById(id).isPresent()) {
-                appUser = userRepository.findById(id).get();
-            }
+    //    @GetMapping("/stories")
+    private String getStories(Long id) {
+        AppUser appUser = null;
+        if (userRepository.findById(id).isPresent()) {
+            appUser = userRepository.findById(id).get();
+        }
 
-            // Friends of this user
-            List<Long> friends = null;
-            if (appUser != null)
-                friends = appUser.getFriends();
+        // Friends of this user
+        List<Long> friends = null;
+        if (appUser != null)
+            friends = appUser.getFriends();
 
-            // Compose Json
+        // Compose Json
+        JSONObject jsonObject = new JSONObject();
+        Map<String, String> jsonMap = new HashMap<>();
+        AppUser friendUser = null;
 
-            JSONObject jsonObject = new JSONObject();
-            Map<String, String> jsonMap = new HashMap<>();
-            AppUser friendUser = null;
-
-            if (friends != null) {
-                for (Long userId : friends) {
-                    if (userRepository.findById(userId).isPresent() &&
-                            userRepository.findById(userId).get().getStories() > 0) {
-                        friendUser = userRepository.findById(userId).get();
-                        jsonMap.put("id", Long.toString(userId));
-                        jsonMap.put("qt", Integer.toString(friendUser.getStories()));
-                        jsonMap.put("name", friendUser.getNName());
-                        jsonObject.put("stories", jsonMap);
-                        jsonMap.clear();
-                    }
+        if (friends != null) {
+            for (Long userId : friends) {
+                if (userRepository.findById(userId).isPresent() &&
+                        userRepository.findById(userId).get().getStories() > 0) {
+                    friendUser = userRepository.findById(userId).get();
+                    jsonMap.put("id", Long.toString(userId));
+                    jsonMap.put("qt", Integer.toString(friendUser.getStories()));
+                    jsonMap.put("name", friendUser.getNName());
+                    jsonObject.put("stories", jsonMap);
+                    jsonMap.clear();
                 }
             }
-            return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
-
         }
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Invalid argument.");
+        return jsonObject.toString();
+    }
+
+
+    @GetMapping("/subscribe/{userId}")
+    public ResponseEntity<String> subscribe(@RequestHeader("api_key") String api_key,
+                                            @RequestHeader("id") Long id,
+                                            @PathVariable("userId") Long userId) {
+
+        if (authorize(api_key, id)) {
+            if (userRepository.findById(id).isPresent()) {
+                AppUser user = userRepository.findById(id).get();
+                user.addFriend(userId);
+                userRepository.save(user);
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.OK).body("");
     }
 
     private boolean authorize(String api_key, long id) {
@@ -348,6 +366,8 @@ public class MainController {
     }
 
 }
+
+
 
 
 
