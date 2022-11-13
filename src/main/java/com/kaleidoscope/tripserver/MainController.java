@@ -135,7 +135,7 @@ public class MainController {
     }
 
     @PostMapping("/add_user_info")
-    public @ResponseBody ResponseEntity<Objects> addNewUser(@RequestHeader("api_key") String api_key,
+    public @ResponseBody ResponseEntity<Objects> addUserInfo(@RequestHeader("api_key") String api_key,
                                                             @RequestBody AppUser appUser) {
         if (appUser != null)
             if (authorize(api_key, appUser.getId())) {
@@ -157,6 +157,18 @@ public class MainController {
                 return new ResponseEntity<Objects>(HttpStatus.NO_CONTENT);
             }
         return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
+    }
+
+    @GetMapping("/user/{id}")
+    public @ResponseBody Optional<AppUser> getUserInfo(@RequestHeader("api_key") String api_key,
+                                                   @PathVariable Long id) {
+        if (authorize(api_key, id)) {
+            AppUser appUser = userRepository.findById(id).get();
+            appUser.setUId("");
+            appUser.setApiKey("");
+            return Optional.of(appUser);
+        }
+        return null;
     }
 
     @PostMapping("/addImage")
@@ -205,18 +217,6 @@ public class MainController {
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-    }
-
-    @GetMapping("/user/{id}")
-    public @ResponseBody Optional<AppUser> getUser(@RequestHeader("api_key") String api_key,
-                                                   @PathVariable Long id) {
-        if (authorize(api_key, id)) {
-            AppUser appUser = userRepository.findById(id).get();
-            appUser.setUId("");
-            appUser.setApiKey("");
-            return Optional.of(appUser);
-        }
-        return null;
     }
 
     @PostMapping("/add_place")
@@ -299,7 +299,8 @@ public class MainController {
         return null;
     }
 
-    //    @GetMapping("/stories")
+
+    // TODO: add timestamps to json-objects; implement cleaning after 24h of publishing
     private String getStories(Long id) {
         AppUser appUser = null;
         if (userRepository.findById(id).isPresent()) {

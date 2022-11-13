@@ -26,6 +26,8 @@ public class AppUser {
     private int requestCount = 0;
     private int stories = 0;
     @ElementCollection(targetClass = Long.class)
+    private List<Long> storiesTimeStamps;
+    @ElementCollection(targetClass = Long.class)
     private List<Long> friends;
     public void addFriend(Long id) {
         friends.add(id);
@@ -37,7 +39,6 @@ public class AppUser {
     private String nName;
     @JsonProperty("lName")
     private String lName;
-
     @JsonProperty("location")
     private String location;
     @JsonProperty("listOfTags")
