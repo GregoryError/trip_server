@@ -27,6 +27,10 @@ public class AppUser {
     private int stories = 0;
     @ElementCollection(targetClass = Long.class)
     private List<Long> storiesTimeStamps;
+    public void addStoriesTimeStamp(Long s) {
+        storiesTimeStamps.add(s);
+    }
+
     @ElementCollection(targetClass = Long.class)
     private List<Long> friends;
     public void addFriend(Long id) {

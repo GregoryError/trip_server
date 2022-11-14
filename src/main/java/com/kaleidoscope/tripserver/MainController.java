@@ -11,6 +11,7 @@ import com.kaleidoscope.tripserver.repositories.TripRepository;
 import com.kaleidoscope.tripserver.repositories.UserRepository;
 import com.kaleidoscope.tripserver.utils.HashGen;
 import com.kaleidoscope.tripserver.utils.JsonBuilder;
+import lombok.NonNull;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.LocalDateTime;
 import java.util.*;
 
 // TODO: connection to Firebase (check users)
@@ -136,7 +138,7 @@ public class MainController {
 
     @PostMapping("/add_user_info")
     public @ResponseBody ResponseEntity<Objects> addUserInfo(@RequestHeader("api_key") String api_key,
-                                                            @RequestBody AppUser appUser) {
+                                                             @RequestBody AppUser appUser) {
         if (appUser != null)
             if (authorize(api_key, appUser.getId())) {
                 if (userRepository.findById(appUser.getId()).isPresent()) {
@@ -161,7 +163,7 @@ public class MainController {
 
     @GetMapping("/user/{id}")
     public @ResponseBody Optional<AppUser> getUserInfo(@RequestHeader("api_key") String api_key,
-                                                   @PathVariable Long id) {
+                                                       @PathVariable Long id) {
         if (authorize(api_key, id)) {
             AppUser appUser = userRepository.findById(id).get();
             appUser.setUId("");
@@ -173,27 +175,14 @@ public class MainController {
 
     @PostMapping("/addImage")
     public @ResponseBody ResponseEntity<Objects> addImage(@RequestHeader("api_key") String api_key,
-                                                          @PathVariable Long id,
+                                                          @RequestHeader("id") Long id,
                                                           @RequestParam("file") MultipartFile file) {
-        // TODO: Adjust media storage
         if (authorize(api_key, id)) {
-            String originFileName = null;
-            if (!file.isEmpty()) {
-                if (file.getOriginalFilename() != null) {
-                    originFileName = file.getOriginalFilename();
-                }
-            }
-
-            String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
-
-            try {
-                path = Paths.get(UPLOAD_DIR + fileName);
-                Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+            if (putImage(file)) {
                 return new ResponseEntity<Objects>(HttpStatus.OK);
-            } catch (IOException e) {
-                e.printStackTrace();
+            } else {
+                return new ResponseEntity<Objects>(HttpStatus.EXPECTATION_FAILED);
             }
-            return new ResponseEntity<Objects>(HttpStatus.EXPECTATION_FAILED);
         }
         return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
     }
@@ -201,7 +190,7 @@ public class MainController {
     @GetMapping("/image/{name}")
     @ResponseBody
     public ResponseEntity<byte[]> getImage(@RequestHeader("api_key") String api_key,
-                                           @PathVariable Long id,
+                                           @RequestHeader("id") Long id,
                                            @PathVariable String name) {
         if (authorize(api_key, id)) {
             path = Paths.get(UPLOAD_DIR + name + ".jpeg");
@@ -299,6 +288,65 @@ public class MainController {
         return null;
     }
 
+    @PostMapping("/putStory")
+    public @ResponseBody ResponseEntity<String> putStory(@RequestHeader("api_key") String api_key,
+                                                         @RequestHeader("id") Long id,
+                                                         @RequestParam("file") MultipartFile file) {
+        if (authorize(api_key, id)) {
+            AppUser appUser = null;
+
+            if (userRepository.findById(id).isPresent()) {
+                appUser = userRepository.findById(id).get();
+            }
+
+            if (appUser != null) {
+                appUser.setStories(appUser.getStories() + 1);
+                appUser.addStoriesTimeStamp(System.currentTimeMillis() / 1000L);
+                userRepository.save(appUser);
+                if (putImage(file)) {
+                    return new ResponseEntity<String>(HttpStatus.OK);
+                }
+            }
+            return new ResponseEntity<String>(HttpStatus.EXPECTATION_FAILED);
+        }
+        return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
+    }
+
+    @GetMapping("/subscribe/{userId}")
+    public ResponseEntity<String> subscribe(@RequestHeader("api_key") String api_key,
+                                            @RequestHeader("id") Long id,
+                                            @PathVariable("userId") Long userId) {
+
+        if (authorize(api_key, id)) {
+            if (userRepository.findById(id).isPresent()) {
+                AppUser user = userRepository.findById(id).get();
+                user.addFriend(userId);
+                userRepository.save(user);
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.OK).body("");
+    }
+
+
+    private boolean putImage(@NonNull MultipartFile file) {
+        // TODO: Adjust media storage
+        String originFileName = null;
+        if (!file.isEmpty()) {
+            if (file.getOriginalFilename() != null) {
+                originFileName = file.getOriginalFilename();
+            }
+        }
+        String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
+        try {
+            path = Paths.get(UPLOAD_DIR + fileName);
+            Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
 
     // TODO: add timestamps to json-objects; implement cleaning after 24h of publishing
     private String getStories(Long id) {
@@ -331,23 +379,6 @@ public class MainController {
             }
         }
         return jsonObject.toString();
-    }
-
-
-    @GetMapping("/subscribe/{userId}")
-    public ResponseEntity<String> subscribe(@RequestHeader("api_key") String api_key,
-                                            @RequestHeader("id") Long id,
-                                            @PathVariable("userId") Long userId) {
-
-        if (authorize(api_key, id)) {
-            if (userRepository.findById(id).isPresent()) {
-                AppUser user = userRepository.findById(id).get();
-                user.addFriend(userId);
-                userRepository.save(user);
-            }
-        }
-
-        return ResponseEntity.status(HttpStatus.OK).body("");
     }
 
     private boolean authorize(String api_key, long id) {
