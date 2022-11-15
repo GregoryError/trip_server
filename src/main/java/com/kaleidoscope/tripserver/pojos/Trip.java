@@ -1,13 +1,11 @@
 package com.kaleidoscope.tripserver.pojos;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Data;
 
 import javax.persistence.*;
 import java.util.List;
 
 
-// TODO: the difference between trips and places...
 @Entity
 public class Trip implements TripItem {
 

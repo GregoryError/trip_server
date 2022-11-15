@@ -22,12 +22,11 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
-import java.time.LocalDateTime;
 import java.util.*;
-
-// TODO: connection to Firebase (check users)
+import java.util.concurrent.TimeUnit;
 
 @Controller
 //@RequestMapping("/data")
@@ -42,6 +41,8 @@ public class MainController {
     // TODO: Adjust media storage
     private static final String UPLOAD_DIR = "/Users/user/IdeaProjects/tripserver/uploads/";
     private Path path;
+
+    private int storiesBeforeCleaningCounter = 0;
 
     @RequestMapping("/")
     public String index() {
@@ -82,7 +83,6 @@ public class MainController {
         }
         try {
             if (FirebaseConnector.getInstance().checkUser(username, uId)) {
-                System.out.println("Firebase checking");
 
                 if (FirebaseConnector.getInstance().getEmail(uId) != null) {
                     appUser.setEmail(FirebaseConnector.getInstance().getEmail(uId));
@@ -95,6 +95,31 @@ public class MainController {
                 appUser.setSent(false);
                 appUser.setUId(uId);
                 appUser.setApiKey(apiKey);
+                // set initial name if Firebase provides it:
+                if (appUser.getFName().length() < 1) {
+                    String firstLastName = FirebaseConnector.getInstance().getName(uId);
+                    String names[] = firstLastName.split(" ");
+                    if (names.length > 1) {
+                        appUser.setFName(names[0]);
+                        appUser.setLName(names[1]);
+                    } else {
+                        appUser.setFName(firstLastName);
+                    }
+                }
+
+                if (appUser.getEmail().length() < 1) {
+                    if (!FirebaseConnector.getInstance().getEmail(uId).isEmpty()) {
+                        appUser.setEmail(FirebaseConnector.getInstance().getEmail(uId));
+                    }
+                }
+
+                if (appUser.getPhone().length() < 1) {
+                    if (!FirebaseConnector.getInstance().getPhone(uId).isEmpty()) {
+                        appUser.setPhone(FirebaseConnector.getInstance().getPhone(uId));
+                    }
+                }
+
+
                 appUser.setCheckCount(0);
                 userRepository.save(appUser);
                 return ResponseEntity.status(HttpStatus.OK).body("Confirmed");
@@ -150,7 +175,6 @@ public class MainController {
                     tempAppUser.setLocation(appUser.getLocation());
                     tempAppUser.setInfo(appUser.getInfo());
                     tempAppUser.setPlaces(appUser.getPlaces());
-                    tempAppUser.setStories(appUser.getStories());
                     tempAppUser.setTrips(appUser.getTrips());
                     tempAppUser.setFriends(appUser.getFriends());
                     userRepository.save(tempAppUser);
@@ -165,7 +189,9 @@ public class MainController {
     public @ResponseBody Optional<AppUser> getUserInfo(@RequestHeader("api_key") String api_key,
                                                        @PathVariable Long id) {
         if (authorize(api_key, id)) {
-            AppUser appUser = userRepository.findById(id).get();
+            AppUser appUser = null;
+            if (userRepository.findById(id).isPresent())
+                appUser = userRepository.findById(id).get();
             appUser.setUId("");
             appUser.setApiKey("");
             return Optional.of(appUser);
@@ -223,16 +249,22 @@ public class MainController {
         return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
     }
 
+    // No secure yet. Mb make it open for world?
     @GetMapping("/place/{id}")
     public @ResponseBody Optional<Place> getPlace(@PathVariable Long id) {
         return placeRepository.findById(id);
+    }
+
+    // No secure yet. Mb make it open for world?
+    @GetMapping("/trip/{id}")
+    public @ResponseBody Optional<Trip> getTrip(@PathVariable Long id) {
+        return tripRepository.findById(id);
     }
 
     @PostMapping("/add_trip")
     public @ResponseBody ResponseEntity<Objects> addNewTrip(@RequestHeader("api_key") String api_key,
                                                             @RequestHeader("id") Long id,
                                                             @RequestBody Trip trip) {
-        // TODO: implement check the length of 'description'
         if (authorize(api_key, id)) {
             if (trip.getDescription().length() < 7000) {
                 tripRepository.save(trip);
@@ -243,11 +275,6 @@ public class MainController {
             return new ResponseEntity<Objects>(HttpStatus.OK);
         }
         return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
-    }
-
-    @GetMapping("/trip/{id}")
-    public @ResponseBody Optional<Trip> getTrip(@PathVariable Long id) {
-        return tripRepository.findById(id);
     }
 
     @GetMapping("/main/{id}")
@@ -295,12 +322,19 @@ public class MainController {
         if (authorize(api_key, id)) {
             AppUser appUser = null;
 
+            storiesBeforeCleaningCounter++;
+
+            if (storiesBeforeCleaningCounter == 33) {
+                storiesBeforeCleaningCounter = 0;
+                clearStories();
+            }
+
             if (userRepository.findById(id).isPresent()) {
                 appUser = userRepository.findById(id).get();
             }
 
             if (appUser != null) {
-                appUser.setStories(appUser.getStories() + 1);
+                // appUser.setStories(appUser.getStories() + 1);
                 appUser.addStoriesTimeStamp(System.currentTimeMillis() / 1000L);
                 userRepository.save(appUser);
                 if (putImage(file)) {
@@ -328,9 +362,32 @@ public class MainController {
         return ResponseEntity.status(HttpStatus.OK).body("");
     }
 
+    private void clearStories() {
+        // Clear time stamps containers for users IF publishing time exceed 24h and delete image-files
+        Iterable<AppUser> usersList = userRepository.findAll();
+        Long now = System.currentTimeMillis() / 1000;
+
+        for (AppUser user : usersList) {
+            for (int i = 0; i < user.getStoriesTimeStamps().size(); ++i) {
+                if ((now - user.getStoriesTimeStamps().get(i)) >= (TimeUnit.HOURS.toMillis(24) / 1000)) {
+                    try {
+                        File file = new File(UPLOAD_DIR + "story_"
+                                + Long.toString(user.getId())
+                                + "_" + Long.toString(user.getStoriesTimeStamps().get(i)));
+                        file.delete();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    user.getStoriesTimeStamps().remove(i);
+                }
+            }
+        }
+
+
+    }
 
     private boolean putImage(@NonNull MultipartFile file) {
-        // TODO: Adjust media storage
+        // TODO: Adjust media storage on a deploy stage
         String originFileName = null;
         if (!file.isEmpty()) {
             if (file.getOriginalFilename() != null) {
@@ -348,7 +405,6 @@ public class MainController {
         return false;
     }
 
-    // TODO: add timestamps to json-objects; implement cleaning after 24h of publishing
     private String getStories(Long id) {
         AppUser appUser = null;
         if (userRepository.findById(id).isPresent()) {
@@ -368,11 +424,14 @@ public class MainController {
         if (friends != null) {
             for (Long userId : friends) {
                 if (userRepository.findById(userId).isPresent() &&
-                        userRepository.findById(userId).get().getStories() > 0) {
+                        userRepository.findById(userId).get().getStoriesTimeStamps().size() > 0) {
                     friendUser = userRepository.findById(userId).get();
                     jsonMap.put("id", Long.toString(userId));
-                    jsonMap.put("qt", Integer.toString(friendUser.getStories()));
                     jsonMap.put("name", friendUser.getNName());
+                    for (int i = 0; i < friendUser.getStoriesTimeStamps().size(); ++i) {
+                        jsonMap.put(Integer.toString(i) + "_stamp", Long.toString(friendUser
+                                .getStoriesTimeStamps().get(i)));
+                    }
                     jsonObject.put("stories", jsonMap);
                     jsonMap.clear();
                 }

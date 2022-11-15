@@ -1,9 +1,6 @@
 package com.kaleidoscope.tripserver.pojos;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Data;
-import org.springframework.context.annotation.Bean;
-
 import javax.persistence.*;
 import java.util.List;
 

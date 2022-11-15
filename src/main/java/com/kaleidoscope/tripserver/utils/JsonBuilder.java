@@ -1,9 +1,7 @@
 package com.kaleidoscope.tripserver.utils;
 
-import com.kaleidoscope.tripserver.pojos.Trip;
 import com.kaleidoscope.tripserver.pojos.TripItem;
 import org.json.JSONObject;
-
 import java.util.*;
 
 public class JsonBuilder {
@@ -35,10 +33,6 @@ public class JsonBuilder {
             }
             countList.add(count);
         }
-
-        System.out.println("CountList: " + countList);
-        System.out.println("tripItemList size: " + tripItemList.size());
-
 
         int index = -1;
         int max = -1;
