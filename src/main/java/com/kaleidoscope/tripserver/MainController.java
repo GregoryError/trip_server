@@ -95,25 +95,27 @@ public class MainController {
                 appUser.setSent(false);
                 appUser.setUId(uId);
                 appUser.setApiKey(apiKey);
-                // set initial name if Firebase provides it:
-                if (appUser.getFName().length() < 1) {
-                    String firstLastName = FirebaseConnector.getInstance().getName(uId);
-                    String names[] = firstLastName.split(" ");
-                    if (names.length > 1) {
-                        appUser.setFName(names[0]);
-                        appUser.setLName(names[1]);
-                    } else {
-                        appUser.setFName(firstLastName);
-                    }
-                }
 
-                if (appUser.getEmail().length() < 1) {
+                // set initial name if Firebase provides it:
+//                if (appUser.getFName() != null &&
+//                appUser.getFName().length() < 1) {
+//                    String firstLastName = FirebaseConnector.getInstance().getName(uId);
+//                    String names[] = firstLastName.split(" ");
+//                    if (names.length > 1) {
+//                        appUser.setFName(names[0]);
+//                        appUser.setLName(names[1]);
+//                    } else {
+//                        appUser.setFName(firstLastName);
+//                    }
+//                }
+
+                if (appUser.getEmail() == null) {
                     if (!FirebaseConnector.getInstance().getEmail(uId).isEmpty()) {
                         appUser.setEmail(FirebaseConnector.getInstance().getEmail(uId));
                     }
                 }
 
-                if (appUser.getPhone().length() < 1) {
+                if (appUser.getPhone() == null) {
                     if (!FirebaseConnector.getInstance().getPhone(uId).isEmpty()) {
                         appUser.setPhone(FirebaseConnector.getInstance().getPhone(uId));
                     }
@@ -361,6 +363,22 @@ public class MainController {
 
         return ResponseEntity.status(HttpStatus.OK).body("");
     }
+
+
+    @GetMapping("/places_cache")
+    @ResponseBody
+    public ResponseEntity<String> getPlacesCache(@PathVariable String uId) {
+        JSONObject jsonObject = new JSONObject();
+        if (placeRepository != null) {
+            Iterable<Place> places = placeRepository.findAll();
+            for (Place p : places) {
+                jsonObject.put(p.getName(), p.getId());
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
+    }
+
 
     private void clearStories() {
         // Clear time stamps containers for users IF publishing time exceed 24h and delete image-files
