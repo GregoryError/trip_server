@@ -1,6 +1,7 @@
 package com.kaleidoscope.tripserver;
 
 import com.google.firebase.auth.FirebaseAuthException;
+import com.google.gson.JsonObject;
 import com.kaleidoscope.tripserver.networkutils.FirebaseConnector;
 import com.kaleidoscope.tripserver.pojos.Place;
 import com.kaleidoscope.tripserver.pojos.AppUser;
@@ -12,6 +13,7 @@ import com.kaleidoscope.tripserver.repositories.UserRepository;
 import com.kaleidoscope.tripserver.utils.HashGen;
 import com.kaleidoscope.tripserver.utils.JsonBuilder;
 import lombok.NonNull;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @Controller
+//@RestController
 //@RequestMapping("/data")
 public class MainController {
     @Autowired
@@ -55,7 +58,11 @@ public class MainController {
                                                       @RequestParam("uId") String uId) {
 
         // Request to Firebase once in 5 times
-        // If the user exist, generate API key for him and send "OK status"
+        // If the user exists, generate API key for him and send "OK status"
+        // The client must request the key once
+
+
+        // Now check if user is valid and generate (if so) api_key and answer
 
         AppUser appUser = null;
 
@@ -63,24 +70,26 @@ public class MainController {
             if (userRepository.findByUid(uId).isPresent())
                 appUser = userRepository.findByUid((uId)).get();
 
-
         String apiKey = null;
 
         if (appUser != null) {
             if ((appUser.getEmail() != null && appUser.getEmail().equals(username)) ||
                     (appUser.getPhone() != null && appUser.getPhone().equals(username))) {
                 if (appUser.getCheckCount() < 5) {
-                    apiKey = HashGen.getInstance().generate(uId);
+                    apiKey = HashGen.getInstance().generate(uId);                       // Generate KEY
                     appUser.setSent(false);
                     appUser.setApiKey(apiKey);
                     appUser.setCheckCount(appUser.getCheckCount() + 1);
                     userRepository.save(appUser);
-                    return ResponseEntity.status(HttpStatus.OK).body("Locally confirmed");
+                    JSONObject jsonObject = new JSONObject();
+                    jsonObject.put("response", "Locally_confirmed");
+                    return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
                 }
             }
         } else {
             appUser = new AppUser();
         }
+
         try {
             if (FirebaseConnector.getInstance().checkUser(username, uId)) {
 
@@ -91,23 +100,10 @@ public class MainController {
                     appUser.setPhone(FirebaseConnector.getInstance().getPhone(uId));
                 }
 
-                apiKey = HashGen.getInstance().generate(appUser.getUId());
+                apiKey = HashGen.getInstance().generate(appUser.getUId());             // Generate KEY
                 appUser.setSent(false);
                 appUser.setUId(uId);
                 appUser.setApiKey(apiKey);
-
-                // set initial name if Firebase provides it:
-//                if (appUser.getFName() != null &&
-//                appUser.getFName().length() < 1) {
-//                    String firstLastName = FirebaseConnector.getInstance().getName(uId);
-//                    String names[] = firstLastName.split(" ");
-//                    if (names.length > 1) {
-//                        appUser.setFName(names[0]);
-//                        appUser.setLName(names[1]);
-//                    } else {
-//                        appUser.setFName(firstLastName);
-//                    }
-//                }
 
                 if (appUser.getEmail() == null) {
                     if (!FirebaseConnector.getInstance().getEmail(uId).isEmpty()) {
@@ -121,26 +117,35 @@ public class MainController {
                     }
                 }
 
-
                 appUser.setCheckCount(0);
                 userRepository.save(appUser);
-                return ResponseEntity.status(HttpStatus.OK).body("Confirmed");
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("response", "confirmed");
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
             }
         } catch (FirebaseAuthException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("response", e.getMessage());
+            return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).body(jsonObject.toString());
         }
-
-        return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("response", "user not found");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
+
 
     // After the user provided a Firebase credentials (login()), he ask for a api_key here.
     @GetMapping("/key/{uId}")
     @ResponseBody
     public ResponseEntity<String> getKey(@PathVariable String uId) {
+
+        //   System.out.println("onGetKey: " + uId);
+
         AppUser appUser = null;
         if (userRepository.count() > 0)
             if (userRepository.findByUid(uId).isPresent())
                 appUser = userRepository.findByUid(uId).get();
+
         if (appUser != null) {
             if (!appUser.isSent()) {
                 Map<String, String> map = new HashMap<>();
@@ -154,8 +159,6 @@ public class MainController {
                 JSONObject jsonObject = new JSONObject();
                 jsonObject.put("user", map);
                 return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
-
-                // return ResponseEntity.status(HttpStatus.OK).body(user.getApiKey());
             } else {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("The key you are asking for is already in use.");
             }
@@ -164,8 +167,9 @@ public class MainController {
     }
 
     @PostMapping("/add_user_info")
-    public @ResponseBody ResponseEntity<Objects> addUserInfo(@RequestHeader("api_key") String api_key,
-                                                             @RequestBody AppUser appUser) {
+    public @ResponseBody ResponseEntity<String> addUserInfo(@RequestHeader("api_key") String api_key,
+                                                            @RequestBody AppUser appUser) {
+        JSONObject jsonObject = new JSONObject();
         if (appUser != null)
             if (authorize(api_key, appUser.getId())) {
                 if (userRepository.findById(appUser.getId()).isPresent()) {
@@ -180,11 +184,16 @@ public class MainController {
                     tempAppUser.setTrips(appUser.getTrips());
                     tempAppUser.setFriends(appUser.getFriends());
                     userRepository.save(tempAppUser);
-                    return new ResponseEntity<Objects>(HttpStatus.OK);
+
+                    jsonObject.put("response", "updated");
+                    return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
                 }
-                return new ResponseEntity<Objects>(HttpStatus.NO_CONTENT);
+                jsonObject.put("response", "cant make answer");
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).body(jsonObject.toString());
             }
-        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
+
+        jsonObject.put("response", "bad auth");
+        return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
     }
 
     @GetMapping("/user/{id}")
@@ -202,17 +211,25 @@ public class MainController {
     }
 
     @PostMapping("/addImage")
-    public @ResponseBody ResponseEntity<Objects> addImage(@RequestHeader("api_key") String api_key,
-                                                          @RequestHeader("id") Long id,
-                                                          @RequestParam("file") MultipartFile file) {
+    public @ResponseBody ResponseEntity<String> addImage(@RequestHeader("api_key") String api_key,
+                                                         @RequestHeader("id") Long id,
+                                                         @RequestParam("file") MultipartFile file) {
+
+        System.out.println("TRYING UPLOAD IMAGE: " + file.getOriginalFilename());
         if (authorize(api_key, id)) {
             if (putImage(file)) {
-                return new ResponseEntity<Objects>(HttpStatus.OK);
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("response", "uploaded");
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
             } else {
-                return new ResponseEntity<Objects>(HttpStatus.EXPECTATION_FAILED);
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("response", "error while uploading");
+                return ResponseEntity.status(HttpStatus.EXPECTATION_FAILED).body(jsonObject.toString());
             }
         }
-        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("response", "wrong auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
 
     @GetMapping("/image/{name}")
@@ -220,9 +237,28 @@ public class MainController {
     public ResponseEntity<byte[]> getImage(@RequestHeader("api_key") String api_key,
                                            @RequestHeader("id") Long id,
                                            @PathVariable String name) {
+
         if (authorize(api_key, id)) {
-            path = Paths.get(UPLOAD_DIR + name + ".jpeg");
-            byte[] imageBytes = new byte[0];
+            String dirPath = null;
+
+            if (name.contains("place")) {
+                dirPath = UPLOAD_DIR + "places/";
+            } else if (name.contains("trip")) {
+                dirPath = UPLOAD_DIR + "trips/";
+            } else if (name.contains("user")) {
+                dirPath = UPLOAD_DIR + "users/";
+            } else {
+                dirPath = UPLOAD_DIR;
+            }
+
+            //   System.out.println("Dir path: " + dirPath);
+
+            path = Paths.get(dirPath + name + ".jpeg");
+
+            System.out.println("TRY: " + path);
+
+
+            byte[] imageBytes;
             try {
                 imageBytes = Files.readAllBytes(path);
                 return ResponseEntity.ok()
@@ -231,57 +267,76 @@ public class MainController {
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            return ResponseEntity.noContent().build();
+            return ResponseEntity.notFound().build();
         }
         return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
     }
 
     @PostMapping("/add_place")
-    public @ResponseBody ResponseEntity<Objects> addNewPlace(@RequestHeader("api_key") String api_key,
-                                                             @RequestHeader("id") Long id,
-                                                             @RequestBody Place place) {
+    public @ResponseBody ResponseEntity<String> addNewPlace(@RequestHeader("api_key") String api_key,
+                                                            @RequestHeader("id") Long id,
+                                                            @RequestBody Place place) {
+        JSONObject jsonObject = new JSONObject();
         if (authorize(api_key, id)) {
             if (place.getDescription().length() < 4000) {
-                placeRepository.save(place);
-                return new ResponseEntity<Objects>(HttpStatus.OK);
+                place.setAuthorId(id);
+                jsonObject.put("response", Long.toString(placeRepository.save(place).getId()));
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
             } else {
-                ResponseEntity.status(HttpStatus.FORBIDDEN).body("The description over-length.");
+                jsonObject.put("response", "Description over-length.");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
+
             }
         }
-        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
+        jsonObject.put("response", "wrong auth.");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
 
     // No secure yet. Mb make it open for world?
-    @GetMapping("/place/{id}")
-    public @ResponseBody Optional<Place> getPlace(@PathVariable Long id) {
-        return placeRepository.findById(id);
+    @GetMapping("/place/{pId}")
+    public @ResponseBody Optional<Place> getPlace(@RequestHeader("api_key") String api_key,
+                                                  @RequestHeader("id") Long id, @PathVariable Long pId) {
+        if (authorize(api_key, id)) {
+            return placeRepository.findById(pId);
+        }
+        return Optional.empty();
     }
 
     // No secure yet. Mb make it open for world?
     @GetMapping("/trip/{id}")
+
+
     public @ResponseBody Optional<Trip> getTrip(@PathVariable Long id) {
         return tripRepository.findById(id);
     }
 
     @PostMapping("/add_trip")
-    public @ResponseBody ResponseEntity<Objects> addNewTrip(@RequestHeader("api_key") String api_key,
-                                                            @RequestHeader("id") Long id,
-                                                            @RequestBody Trip trip) {
+    public @ResponseBody ResponseEntity<String> addNewTrip(@RequestHeader("api_key") String api_key,
+                                                           @RequestHeader("id") Long id,
+                                                           @RequestBody Trip trip) {
+        JSONObject jsonObject = new JSONObject();
         if (authorize(api_key, id)) {
             if (trip.getDescription().length() < 7000) {
-                tripRepository.save(trip);
-                return new ResponseEntity<Objects>(HttpStatus.OK);
+                trip.setAuthorId(id);
+                jsonObject.put("response", Long.toString(tripRepository.save(trip).getId()));
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
             } else {
-                ResponseEntity.status(HttpStatus.FORBIDDEN).body("The description over-length.");
+                jsonObject.put("response", "The description over-length.");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
             }
-            return new ResponseEntity<Objects>(HttpStatus.OK);
         }
-        return new ResponseEntity<Objects>(HttpStatus.FORBIDDEN);
+        jsonObject.put("response", "wrong auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
 
     @GetMapping("/main/{id}")
     public @ResponseBody MainPresenter getMainContent(@RequestHeader("api_key") String api_key,
                                                       @PathVariable Long id) {
+
+        // TODO: add snapshots cloud
+
+        //  System.out.println("on getMain: id = " + Long.toString(id) + " key = " + api_key);
+
         if (authorize(api_key, id)) {
             MainPresenter presenter = new MainPresenter();
             AppUser appUser = null;
@@ -314,6 +369,7 @@ public class MainController {
 
             return presenter;
         }
+        //  System.out.println("NULL");
         return null;
     }
 
@@ -367,16 +423,22 @@ public class MainController {
 
     @GetMapping("/places_cache")
     @ResponseBody
-    public ResponseEntity<String> getPlacesCache(@PathVariable String uId) {
-        JSONObject jsonObject = new JSONObject();
-        if (placeRepository != null) {
-            Iterable<Place> places = placeRepository.findAll();
-            for (Place p : places) {
-                jsonObject.put(p.getName(), p.getId());
-            }
-        }
+    public ResponseEntity<String> getPlacesCache(@RequestHeader("api_key") String api_key,
+                                                 @RequestHeader("id") Long id) {
+        JsonObject jsonObject = new JsonObject();
 
-        return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
+        if (authorize(api_key, id)) {
+            if (placeRepository != null) {
+                Iterable<Place> places = placeRepository.findAll();
+                for (Place p : places) {
+                    jsonObject.addProperty(p.getName(), Long.toString(p.getId()));
+                }
+            }
+            //  System.out.println("JSON:" + jsonObject.toString());
+            return ResponseEntity.ok(jsonObject.toString());
+        }
+        jsonObject.addProperty("response", "wrong auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
 
 
@@ -413,8 +475,53 @@ public class MainController {
             }
         }
         String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
+        System.out.println("on PutImage: " + fileName);
+
+        Long f_id = Long.valueOf(originFileName.substring(0, originFileName.indexOf('_')));
+
+        String dirPath = null;
+
+
+        if (originFileName.substring(originFileName.indexOf('_')).equals("_place_prev")
+                || originFileName.contains("_place_addons")) {
+            dirPath = UPLOAD_DIR + "places/";
+            if (originFileName.contains("_place_addons")) {
+                if (placeRepository.findById(f_id).isPresent()) {
+                    Place place = null;
+                    if (placeRepository.findById(f_id).isPresent())
+                        place = placeRepository.findById(f_id).get();
+                    if (place.getImagesCount() == null)
+                        place.setImagesCount(1);
+                    else
+                        place.setImagesCount(place.getImagesCount() + 1);
+                    placeRepository.save(place);
+                }
+            }
+        } else if (originFileName.contains("_trip_prev")
+                || originFileName.contains("_trip_addons")) {
+            dirPath = UPLOAD_DIR + "trips/";
+            if (originFileName.contains("_trip_addons")) {
+                Trip trip = null;
+                if (tripRepository.findById(f_id).isPresent()) {
+                    trip = tripRepository.findById(f_id).get();
+                    if (trip.getImagesCount() == null)
+                        trip.setImagesCount(1);
+                    else
+                        trip.setImagesCount(trip.getImagesCount() + 1);
+                    tripRepository.save(trip);
+                }
+            }
+        } else if (originFileName.contains("_user")) {
+            dirPath = UPLOAD_DIR + "users/";
+        } else {
+            dirPath = UPLOAD_DIR;
+        }
+
+        System.out.println("PATH to save: " + dirPath);
+        System.out.println("NAME to save: " + fileName);
+
         try {
-            path = Paths.get(UPLOAD_DIR + fileName);
+            path = Paths.get(dirPath + fileName);
             Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
             return true;
         } catch (IOException e) {
@@ -459,20 +566,112 @@ public class MainController {
     }
 
     private boolean authorize(String api_key, long id) {
+
         AppUser appUser = null;
         if (userRepository.findById(id).isPresent())
             appUser = userRepository.findById(id).get();
         if (appUser != null) {
-            if (appUser.isSent())
-                if (appUser.getRequestCount() < 15)
-                    if (api_key.equals(appUser.getApiKey())) {
-                        appUser.setRequestCount(appUser.getRequestCount() + 1);
-                        userRepository.save(appUser);
-                        return true;
-                    }
+            if (api_key.equals(appUser.getApiKey())) {
+                System.out.println("200 for: " + api_key);
+                return true;
+            }
         }
+
+//        AppUser appUser = null;
+//        if (userRepository.findById(id).isPresent())
+//            appUser = userRepository.findById(id).get();
+//        if (appUser != null) {
+//            if (appUser.isSent())
+//                if (appUser.getRequestCount() < 15) {
+//                    if (api_key.equals(appUser.getApiKey())) {
+//                        appUser.setRequestCount(appUser.getRequestCount() + 1);
+//
+//                        System.out.println("Req. count: " + appUser.getRequestCount());
+//
+//                        userRepository.save(appUser);
+//                        System.out.println("200 for: " + api_key);
+//                        return true;
+//                    }
+//                }
+//        }
+        System.out.println("403 for: " + api_key);
         return false;
     }
+
+
+    @PostMapping("/addVisitor/{pId}")
+    public @ResponseBody ResponseEntity<String> addVisitor(@RequestHeader("api_key") String api_key,
+                                                           @RequestHeader("id") Long id,
+                                                           @PathVariable Long pId) {
+        JSONObject jsonObject_response = new JSONObject();
+
+        if (authorize(api_key, id)) {
+
+            System.out.println("ADD_VISITOR: " + id + " PLACE: " + pId);
+            if (placeRepository.findById(pId).isPresent()) {
+                Place place = placeRepository.findById(pId).get();
+                List<Long> visitors = place.getVisitorIds();
+                if (visitors == null) {
+                    visitors = new ArrayList<>();
+                }
+                visitors.add(id);
+                place.setVisitorIds(visitors);
+                placeRepository.save(place);
+            }
+            jsonObject_response.put("response", "added");
+            return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+    }
+
+    @PostMapping("/like/{pId}")
+    public @ResponseBody ResponseEntity<String> like(@RequestHeader("api_key") String api_key,
+                                                     @RequestHeader("id") Long id,
+                                                     @PathVariable Long pId) {
+        System.out.println("On Like");
+
+        JSONObject jsonObject_response = new JSONObject();
+        if (placeRepository.findById(pId).isPresent()) {
+            Place place = placeRepository.findById(pId).get();
+            List<Long> whoLikedList = place.getLikeIds();
+            if (whoLikedList != null) {
+                if (whoLikedList.contains(id)) {
+                    whoLikedList.remove(id);
+                } else {
+                    whoLikedList.add(id);
+                }
+            } else {
+                whoLikedList = new ArrayList<>();
+                whoLikedList.add(id);
+            }
+
+            place.setLikeIds(whoLikedList);
+            placeRepository.save(place);
+            jsonObject_response.put("response", "like");
+            ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+
+        }
+        jsonObject_response.put("response", "bad auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+    }
+
+    @GetMapping("/user_name/{uId}")
+    public @ResponseBody ResponseEntity<String> getUserName(@RequestHeader("api_key") String api_key,
+                                                            @RequestHeader("id") Long id,
+                                                            @PathVariable Long uId) {
+        JSONObject jsonObject_response = new JSONObject();
+        if (authorize(api_key, id)) {
+            if (userRepository.findById(uId).isPresent()) {
+                AppUser appUser = userRepository.findById(id).get();
+                jsonObject_response.put("fName", appUser.getFName());
+                jsonObject_response.put("lName", appUser.getLName());
+            }
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+        }
+        jsonObject_response.put("response", "bad auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+    }
+
 
 }
 

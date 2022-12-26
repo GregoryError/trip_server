@@ -1,6 +1,7 @@
 package com.kaleidoscope.tripserver.pojos;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import javax.persistence.*;
 import java.util.List;
 
@@ -8,7 +9,7 @@ import java.util.List;
 public class Place implements TripItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "place_seq")
     private long id;
     @JsonProperty("name")
     private String name;
@@ -19,9 +20,8 @@ public class Place implements TripItem {
     @JsonProperty("tags")
     @ElementCollection(targetClass = Integer.class)
     private List<Integer> tags;
-    @JsonProperty("imageUrls")
-    @ElementCollection(targetClass = String.class)
-    private List<String> imageUrls;
+    @JsonProperty("imagesCount")
+    private Integer imagesCount;
     @JsonProperty("description")
     @Column(length = 3000)
     private String description;
@@ -41,6 +41,14 @@ public class Place implements TripItem {
         return id;
     }
 
+    public Integer getImagesCount() {
+        return imagesCount;
+    }
+
+    public void setImagesCount(Integer imagesCount) {
+        this.imagesCount = imagesCount;
+    }
+
     @Override
     public String getName() {
         return name;
@@ -57,10 +65,6 @@ public class Place implements TripItem {
     @Override
     public List<Integer> getTags() {
         return tags;
-    }
-
-    public List<String> getImageUrls() {
-        return imageUrls;
     }
 
     public String getDescription() {
@@ -103,10 +107,6 @@ public class Place implements TripItem {
     @Override
     public void setTags(List<Integer> tags) {
         this.tags = tags;
-    }
-
-    public void setImageUrls(List<String> imageUrls) {
-        this.imageUrls = imageUrls;
     }
 
     public void setDescription(String description) {

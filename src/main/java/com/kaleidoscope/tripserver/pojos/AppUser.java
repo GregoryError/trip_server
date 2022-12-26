@@ -8,7 +8,7 @@ import java.util.List;
 public class AppUser {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "user_seq")
     private long id;
     @JsonProperty("uId")
     private String uId;
@@ -16,7 +16,6 @@ public class AppUser {
     private String email;
     @JsonProperty("phone")
     private String phone;
-
     private String ApiKey;
     private boolean sent;
     private int checkCount = 0;

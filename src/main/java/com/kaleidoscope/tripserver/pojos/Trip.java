@@ -15,6 +15,19 @@ public class Trip implements TripItem {
     @JsonProperty("name")
     private String name;
 
+
+    public Integer getImagesCount() {
+        return imagesCount;
+    }
+
+    public void setImagesCount(Integer imagesCount) {
+        this.imagesCount = imagesCount;
+    }
+
+    @JsonProperty("imagesCount")
+    private Integer imagesCount;
+
+
     public List<Long> getPlacesList() {
         return placesList;
     }
@@ -32,9 +45,6 @@ public class Trip implements TripItem {
     @JsonProperty("tags")
     @ElementCollection(targetClass = Integer.class)
     private List<Integer> tags;
-    @JsonProperty("imageUrls")
-    @ElementCollection(targetClass = String.class)
-    private List<String> imageUrls;
     @JsonProperty("description")
     @Column(length = 3000)
     private String description;
@@ -66,10 +76,6 @@ public class Trip implements TripItem {
     @Override
     public List<Integer> getTags() {
         return tags;
-    }
-
-    public List<String> getImageUrls() {
-        return imageUrls;
     }
 
     public String getDescription() {
@@ -108,10 +114,6 @@ public class Trip implements TripItem {
     @Override
     public void setTags(List<Integer> tags) {
         this.tags = tags;
-    }
-
-    public void setImageUrls(List<String> imageUrls) {
-        this.imageUrls = imageUrls;
     }
 
     public void setDescription(String description) {
