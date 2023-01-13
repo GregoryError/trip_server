@@ -1,15 +1,20 @@
 package com.kaleidoscope.tripserver.pojos;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.hibernate.annotations.Cascade;
 
 import javax.persistence.*;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@Table(name = "place")
 public class Place implements TripItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "place_seq")
+    @Column(name = "id")
     private long id;
     @JsonProperty("name")
     private String name;
@@ -35,6 +40,25 @@ public class Place implements TripItem {
     @JsonProperty("likeIds")
     @ElementCollection(targetClass = Long.class)
     private List<Long> likeIds;
+
+    public List<Comment> getComments() {
+        return comments;
+    }
+
+    public void setComments(List<Comment> comments) {
+        this.comments = comments;
+    }
+
+    @JsonProperty("comments")
+    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<Comment> comments = new ArrayList<>();
+
+
+    public void addComment(Comment comment) {
+        comments.add(comment);
+    }
+
 
     @Override
     public long getId() {

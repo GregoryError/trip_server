@@ -3,6 +3,7 @@ package com.kaleidoscope.tripserver;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.gson.JsonObject;
 import com.kaleidoscope.tripserver.networkutils.FirebaseConnector;
+import com.kaleidoscope.tripserver.pojos.Comment;
 import com.kaleidoscope.tripserver.pojos.Place;
 import com.kaleidoscope.tripserver.pojos.AppUser;
 import com.kaleidoscope.tripserver.pojos.Trip;
@@ -61,7 +62,6 @@ public class MainController {
         // If the user exists, generate API key for him and send "OK status"
         // The client must request the key once
 
-
         // Now check if user is valid and generate (if so) api_key and answer
 
         AppUser appUser = null;
@@ -92,7 +92,7 @@ public class MainController {
 
         try {
             if (FirebaseConnector.getInstance().checkUser(username, uId)) {
-
+                // In case Firebase knows email or phone save it
                 if (FirebaseConnector.getInstance().getEmail(uId) != null) {
                     appUser.setEmail(FirebaseConnector.getInstance().getEmail(uId));
                 }
@@ -139,8 +139,6 @@ public class MainController {
     @ResponseBody
     public ResponseEntity<String> getKey(@PathVariable String uId) {
 
-        //   System.out.println("onGetKey: " + uId);
-
         AppUser appUser = null;
         if (userRepository.count() > 0)
             if (userRepository.findByUid(uId).isPresent())
@@ -184,7 +182,6 @@ public class MainController {
                     tempAppUser.setTrips(appUser.getTrips());
                     tempAppUser.setFriends(appUser.getFriends());
                     userRepository.save(tempAppUser);
-
                     jsonObject.put("response", "updated");
                     return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
                 }
@@ -193,7 +190,7 @@ public class MainController {
             }
 
         jsonObject.put("response", "bad auth");
-        return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
 
     @GetMapping("/user/{id}")
@@ -214,8 +211,6 @@ public class MainController {
     public @ResponseBody ResponseEntity<String> addImage(@RequestHeader("api_key") String api_key,
                                                          @RequestHeader("id") Long id,
                                                          @RequestParam("file") MultipartFile file) {
-
-        System.out.println("TRYING UPLOAD IMAGE: " + file.getOriginalFilename());
         if (authorize(api_key, id)) {
             if (putImage(file)) {
                 JSONObject jsonObject = new JSONObject();
@@ -251,12 +246,7 @@ public class MainController {
                 dirPath = UPLOAD_DIR;
             }
 
-            //   System.out.println("Dir path: " + dirPath);
-
             path = Paths.get(dirPath + name + ".jpeg");
-
-            System.out.println("TRY: " + path);
-
 
             byte[] imageBytes;
             try {
@@ -292,22 +282,25 @@ public class MainController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
     }
 
-    // No secure yet. Mb make it open for world?
     @GetMapping("/place/{pId}")
     public @ResponseBody Optional<Place> getPlace(@RequestHeader("api_key") String api_key,
                                                   @RequestHeader("id") Long id, @PathVariable Long pId) {
         if (authorize(api_key, id)) {
-            return placeRepository.findById(pId);
+            if (placeRepository.findById(pId).isPresent())
+                return placeRepository.findById(pId);
         }
         return Optional.empty();
     }
 
-    // No secure yet. Mb make it open for world?
-    @GetMapping("/trip/{id}")
-
-
-    public @ResponseBody Optional<Trip> getTrip(@PathVariable Long id) {
-        return tripRepository.findById(id);
+    @GetMapping("/trip/{tId}")
+    public @ResponseBody Optional<Trip> getTrip(@RequestHeader("api_key") String api_key,
+                                                @RequestHeader("id") Long id, @PathVariable Long tId) {
+        JSONObject jsonObject = new JSONObject();
+        if (authorize(api_key, id)) {
+            if (tripRepository.findById(tId).isPresent())
+                return tripRepository.findById(tId);
+        }
+        return Optional.empty();
     }
 
     @PostMapping("/add_trip")
@@ -366,7 +359,6 @@ public class MainController {
                 presenter.setStoriesJson(getStories(id));
 
             }
-
             return presenter;
         }
         //  System.out.println("NULL");
@@ -572,7 +564,6 @@ public class MainController {
             appUser = userRepository.findById(id).get();
         if (appUser != null) {
             if (api_key.equals(appUser.getApiKey())) {
-                System.out.println("200 for: " + api_key);
                 return true;
             }
         }
@@ -659,12 +650,14 @@ public class MainController {
     public @ResponseBody ResponseEntity<String> getUserName(@RequestHeader("api_key") String api_key,
                                                             @RequestHeader("id") Long id,
                                                             @PathVariable Long uId) {
+
         JSONObject jsonObject_response = new JSONObject();
         if (authorize(api_key, id)) {
             if (userRepository.findById(uId).isPresent()) {
-                AppUser appUser = userRepository.findById(id).get();
+                AppUser appUser = userRepository.findById(uId).get();
                 jsonObject_response.put("fName", appUser.getFName());
                 jsonObject_response.put("lName", appUser.getLName());
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
             }
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
         }
@@ -672,6 +665,66 @@ public class MainController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
     }
 
+
+    @PostMapping("/add_place_comment/{pId}")
+    public @ResponseBody ResponseEntity<String> addPlaceComments(@RequestHeader("api_key") String api_key,
+                                                                 @RequestHeader("id") Long id,
+                                                                 @PathVariable("pId") Long pId,
+                                                                 @RequestBody Comment comment) {
+        JSONObject jsonObject_response = new JSONObject();
+        if (authorize(api_key, id)) {
+            if (placeRepository.findById(pId).isPresent()) {
+                Place place = placeRepository.findById(pId).get();
+                comment.setPlace(place);
+
+                System.out.println("Comment: " + comment.getContent() + " user_id: " + comment.getuId());
+
+                place.addComment(comment);
+                placeRepository.save(place);
+                jsonObject_response.put("response", "comment added");
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+            }
+            jsonObject_response.put("response", "place not found");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+        }
+
+        jsonObject_response.put("response", "bad auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+    }
+
+
+    @GetMapping("/get_place_comments/{pId}")
+    public @ResponseBody ResponseEntity<String> getPlaceComments(@RequestHeader("api_key") String api_key,
+                                                                 @RequestHeader("id") Long id,
+                                                                 @PathVariable("pId") Long pId) {
+
+        System.out.println("IN GET COMMENTS");
+
+        JSONObject jsonObject_response = new JSONObject();
+        if (authorize(api_key, id)) {
+            if (placeRepository.findById(pId).isPresent()) {
+                Place place = placeRepository.findById(pId).get();
+                List<Comment> comments = place.getComments();
+                JSONArray jsonArray = new JSONArray();
+                for (Comment c : comments) {
+                    JSONObject json_comment = new JSONObject();
+                    json_comment.put("content", c.getContent());
+                    json_comment.put("dateTime", c.getDateTime());
+                    json_comment.put("uId", c.getuId());
+                    jsonArray.put(json_comment);
+                    System.out.println("Comment: " + c.getDateTime() + ": " + c.getContent());
+                }
+                jsonObject_response.put("comments", jsonArray);
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+
+            }
+            jsonObject_response.put("response", "place not found");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+        }
+
+        jsonObject_response.put("response", "bad auth");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+    }
 
 }
 
