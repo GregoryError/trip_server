@@ -311,6 +311,7 @@ public class MainController {
         if (authorize(api_key, id)) {
             if (trip.getDescription().length() < 7000) {
                 trip.setAuthorId(id);
+                System.out.println("NEW TRIP date:" + trip.getDate());
                 jsonObject.put("response", Long.toString(tripRepository.save(trip).getId()));
                 return ResponseEntity.status(HttpStatus.OK).body(jsonObject.toString());
             } else {
@@ -358,215 +359,235 @@ public class MainController {
 
                 presenter.setStoriesJson(getStories(id));
 
+
+                Iterable<Place> places = placeRepository.findAll();
+
+                    JSONArray jsonArray = new JSONArray();
+                    JSONObject json_place_id = null;
+
+                    if (placeRepository.count() > 0) {
+
+                        Iterable<Place> placeList = placeRepository.findAll();
+                        for (Place p : placeList) {
+                            json_place_id = new JSONObject();
+                            json_place_id.put("id", p.getId());
+                            json_place_id.put("author", p.getAuthorId());
+                            jsonArray.put(json_place_id);
+                        }
+
+                        presenter.setPlaces(jsonArray.toString());
+                    }
+
+
+                }
+                return presenter;
             }
-            return presenter;
+            //  System.out.println("NULL");
+            return null;
         }
-        //  System.out.println("NULL");
-        return null;
-    }
 
-    @PostMapping("/putStory")
-    public @ResponseBody ResponseEntity<String> putStory(@RequestHeader("api_key") String api_key,
-                                                         @RequestHeader("id") Long id,
-                                                         @RequestParam("file") MultipartFile file) {
-        if (authorize(api_key, id)) {
-            AppUser appUser = null;
+        @PostMapping("/putStory")
+        public @ResponseBody ResponseEntity<String> putStory (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @RequestParam("file") MultipartFile file){
+            if (authorize(api_key, id)) {
+                AppUser appUser = null;
 
-            storiesBeforeCleaningCounter++;
+                storiesBeforeCleaningCounter++;
 
-            if (storiesBeforeCleaningCounter == 33) {
-                storiesBeforeCleaningCounter = 0;
-                clearStories();
+                if (storiesBeforeCleaningCounter == 33) {
+                    storiesBeforeCleaningCounter = 0;
+                    clearStories();
+                }
+
+                if (userRepository.findById(id).isPresent()) {
+                    appUser = userRepository.findById(id).get();
+                }
+
+                if (appUser != null) {
+                    // appUser.setStories(appUser.getStories() + 1);
+                    appUser.addStoriesTimeStamp(System.currentTimeMillis() / 1000L);
+                    userRepository.save(appUser);
+                    if (putImage(file)) {
+                        return new ResponseEntity<String>(HttpStatus.OK);
+                    }
+                }
+                return new ResponseEntity<String>(HttpStatus.EXPECTATION_FAILED);
+            }
+            return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
+        }
+
+        @GetMapping("/subscribe/{userId}")
+        public ResponseEntity<String> subscribe (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable("userId") Long userId){
+
+            if (authorize(api_key, id)) {
+                if (userRepository.findById(id).isPresent()) {
+                    AppUser user = userRepository.findById(id).get();
+                    user.addFriend(userId);
+                    userRepository.save(user);
+                }
             }
 
+            return ResponseEntity.status(HttpStatus.OK).body("");
+        }
+
+
+        @GetMapping("/places_cache")
+        @ResponseBody
+        public ResponseEntity<String> getPlacesCache (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id){
+            JsonObject jsonObject = new JsonObject();
+
+            if (authorize(api_key, id)) {
+                if (placeRepository != null) {
+                    Iterable<Place> places = placeRepository.findAll();
+                    for (Place p : places) {
+                        jsonObject.addProperty(p.getName(), Long.toString(p.getId()));
+                    }
+                }
+                //  System.out.println("JSON:" + jsonObject.toString());
+                return ResponseEntity.ok(jsonObject.toString());
+            }
+            jsonObject.addProperty("response", "wrong auth");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
+        }
+
+
+        private void clearStories () {
+            // Clear time stamps containers for users IF publishing time exceed 24h and delete image-files
+            Iterable<AppUser> usersList = userRepository.findAll();
+            Long now = System.currentTimeMillis() / 1000;
+
+            for (AppUser user : usersList) {
+                for (int i = 0; i < user.getStoriesTimeStamps().size(); ++i) {
+                    if ((now - user.getStoriesTimeStamps().get(i)) >= (TimeUnit.HOURS.toMillis(24) / 1000)) {
+                        try {
+                            File file = new File(UPLOAD_DIR + "story_"
+                                    + Long.toString(user.getId())
+                                    + "_" + Long.toString(user.getStoriesTimeStamps().get(i)));
+                            file.delete();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                        user.getStoriesTimeStamps().remove(i);
+                    }
+                }
+            }
+
+
+        }
+
+        private boolean putImage (@NonNull MultipartFile file){
+            // TODO: Adjust media storage on a deploy stage
+            String originFileName = null;
+            if (!file.isEmpty()) {
+                if (file.getOriginalFilename() != null) {
+                    originFileName = file.getOriginalFilename();
+                }
+            }
+            String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
+            System.out.println("on PutImage: " + fileName);
+
+            Long f_id = Long.valueOf(originFileName.substring(0, originFileName.indexOf('_')));
+
+            String dirPath = null;
+
+
+            if (originFileName.substring(originFileName.indexOf('_')).equals("_place_prev")
+                    || originFileName.contains("_place_addons")) {
+                dirPath = UPLOAD_DIR + "places/";
+                if (originFileName.contains("_place_addons")) {
+                    if (placeRepository.findById(f_id).isPresent()) {
+                        Place place = null;
+                        if (placeRepository.findById(f_id).isPresent())
+                            place = placeRepository.findById(f_id).get();
+                        if (place.getImagesCount() == null)
+                            place.setImagesCount(1);
+                        else
+                            place.setImagesCount(place.getImagesCount() + 1);
+                        placeRepository.save(place);
+                    }
+                }
+            } else if (originFileName.contains("_trip_prev")
+                    || originFileName.contains("_trip_addons")) {
+                dirPath = UPLOAD_DIR + "trips/";
+                if (originFileName.contains("_trip_addons")) {
+                    Trip trip = null;
+                    if (tripRepository.findById(f_id).isPresent()) {
+                        trip = tripRepository.findById(f_id).get();
+                        if (trip.getImagesCount() == null)
+                            trip.setImagesCount(1);
+                        else
+                            trip.setImagesCount(trip.getImagesCount() + 1);
+                        tripRepository.save(trip);
+                    }
+                }
+            } else if (originFileName.contains("_user")) {
+                dirPath = UPLOAD_DIR + "users/";
+            } else {
+                dirPath = UPLOAD_DIR;
+            }
+
+            System.out.println("PATH to save: " + dirPath);
+            System.out.println("NAME to save: " + fileName);
+
+            try {
+                path = Paths.get(dirPath + fileName);
+                Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+                return true;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return false;
+        }
+
+        private String getStories (Long id){
+            AppUser appUser = null;
             if (userRepository.findById(id).isPresent()) {
                 appUser = userRepository.findById(id).get();
             }
 
+            // Friends of this user
+            List<Long> friends = null;
+            if (appUser != null)
+                friends = appUser.getFriends();
+
+            // Compose Json
+            JSONObject jsonObject = new JSONObject();
+            Map<String, String> jsonMap = new HashMap<>();
+            AppUser friendUser = null;
+
+            if (friends != null) {
+                for (Long userId : friends) {
+                    if (userRepository.findById(userId).isPresent() &&
+                            userRepository.findById(userId).get().getStoriesTimeStamps().size() > 0) {
+                        friendUser = userRepository.findById(userId).get();
+                        jsonMap.put("id", Long.toString(userId));
+                        jsonMap.put("name", friendUser.getNName());
+                        for (int i = 0; i < friendUser.getStoriesTimeStamps().size(); ++i) {
+                            jsonMap.put(Integer.toString(i) + "_stamp", Long.toString(friendUser
+                                    .getStoriesTimeStamps().get(i)));
+                        }
+                        jsonObject.put("stories", jsonMap);
+                        jsonMap.clear();
+                    }
+                }
+            }
+            return jsonObject.toString();
+        }
+
+        private boolean authorize (String api_key,long id){
+
+            AppUser appUser = null;
+            if (userRepository.findById(id).isPresent())
+                appUser = userRepository.findById(id).get();
             if (appUser != null) {
-                // appUser.setStories(appUser.getStories() + 1);
-                appUser.addStoriesTimeStamp(System.currentTimeMillis() / 1000L);
-                userRepository.save(appUser);
-                if (putImage(file)) {
-                    return new ResponseEntity<String>(HttpStatus.OK);
+                if (api_key.equals(appUser.getApiKey())) {
+                    return true;
                 }
             }
-            return new ResponseEntity<String>(HttpStatus.EXPECTATION_FAILED);
-        }
-        return new ResponseEntity<String>(HttpStatus.FORBIDDEN);
-    }
-
-    @GetMapping("/subscribe/{userId}")
-    public ResponseEntity<String> subscribe(@RequestHeader("api_key") String api_key,
-                                            @RequestHeader("id") Long id,
-                                            @PathVariable("userId") Long userId) {
-
-        if (authorize(api_key, id)) {
-            if (userRepository.findById(id).isPresent()) {
-                AppUser user = userRepository.findById(id).get();
-                user.addFriend(userId);
-                userRepository.save(user);
-            }
-        }
-
-        return ResponseEntity.status(HttpStatus.OK).body("");
-    }
-
-
-    @GetMapping("/places_cache")
-    @ResponseBody
-    public ResponseEntity<String> getPlacesCache(@RequestHeader("api_key") String api_key,
-                                                 @RequestHeader("id") Long id) {
-        JsonObject jsonObject = new JsonObject();
-
-        if (authorize(api_key, id)) {
-            if (placeRepository != null) {
-                Iterable<Place> places = placeRepository.findAll();
-                for (Place p : places) {
-                    jsonObject.addProperty(p.getName(), Long.toString(p.getId()));
-                }
-            }
-            //  System.out.println("JSON:" + jsonObject.toString());
-            return ResponseEntity.ok(jsonObject.toString());
-        }
-        jsonObject.addProperty("response", "wrong auth");
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject.toString());
-    }
-
-
-    private void clearStories() {
-        // Clear time stamps containers for users IF publishing time exceed 24h and delete image-files
-        Iterable<AppUser> usersList = userRepository.findAll();
-        Long now = System.currentTimeMillis() / 1000;
-
-        for (AppUser user : usersList) {
-            for (int i = 0; i < user.getStoriesTimeStamps().size(); ++i) {
-                if ((now - user.getStoriesTimeStamps().get(i)) >= (TimeUnit.HOURS.toMillis(24) / 1000)) {
-                    try {
-                        File file = new File(UPLOAD_DIR + "story_"
-                                + Long.toString(user.getId())
-                                + "_" + Long.toString(user.getStoriesTimeStamps().get(i)));
-                        file.delete();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    user.getStoriesTimeStamps().remove(i);
-                }
-            }
-        }
-
-
-    }
-
-    private boolean putImage(@NonNull MultipartFile file) {
-        // TODO: Adjust media storage on a deploy stage
-        String originFileName = null;
-        if (!file.isEmpty()) {
-            if (file.getOriginalFilename() != null) {
-                originFileName = file.getOriginalFilename();
-            }
-        }
-        String fileName = StringUtils.cleanPath(originFileName + ".jpeg");
-        System.out.println("on PutImage: " + fileName);
-
-        Long f_id = Long.valueOf(originFileName.substring(0, originFileName.indexOf('_')));
-
-        String dirPath = null;
-
-
-        if (originFileName.substring(originFileName.indexOf('_')).equals("_place_prev")
-                || originFileName.contains("_place_addons")) {
-            dirPath = UPLOAD_DIR + "places/";
-            if (originFileName.contains("_place_addons")) {
-                if (placeRepository.findById(f_id).isPresent()) {
-                    Place place = null;
-                    if (placeRepository.findById(f_id).isPresent())
-                        place = placeRepository.findById(f_id).get();
-                    if (place.getImagesCount() == null)
-                        place.setImagesCount(1);
-                    else
-                        place.setImagesCount(place.getImagesCount() + 1);
-                    placeRepository.save(place);
-                }
-            }
-        } else if (originFileName.contains("_trip_prev")
-                || originFileName.contains("_trip_addons")) {
-            dirPath = UPLOAD_DIR + "trips/";
-            if (originFileName.contains("_trip_addons")) {
-                Trip trip = null;
-                if (tripRepository.findById(f_id).isPresent()) {
-                    trip = tripRepository.findById(f_id).get();
-                    if (trip.getImagesCount() == null)
-                        trip.setImagesCount(1);
-                    else
-                        trip.setImagesCount(trip.getImagesCount() + 1);
-                    tripRepository.save(trip);
-                }
-            }
-        } else if (originFileName.contains("_user")) {
-            dirPath = UPLOAD_DIR + "users/";
-        } else {
-            dirPath = UPLOAD_DIR;
-        }
-
-        System.out.println("PATH to save: " + dirPath);
-        System.out.println("NAME to save: " + fileName);
-
-        try {
-            path = Paths.get(dirPath + fileName);
-            Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    private String getStories(Long id) {
-        AppUser appUser = null;
-        if (userRepository.findById(id).isPresent()) {
-            appUser = userRepository.findById(id).get();
-        }
-
-        // Friends of this user
-        List<Long> friends = null;
-        if (appUser != null)
-            friends = appUser.getFriends();
-
-        // Compose Json
-        JSONObject jsonObject = new JSONObject();
-        Map<String, String> jsonMap = new HashMap<>();
-        AppUser friendUser = null;
-
-        if (friends != null) {
-            for (Long userId : friends) {
-                if (userRepository.findById(userId).isPresent() &&
-                        userRepository.findById(userId).get().getStoriesTimeStamps().size() > 0) {
-                    friendUser = userRepository.findById(userId).get();
-                    jsonMap.put("id", Long.toString(userId));
-                    jsonMap.put("name", friendUser.getNName());
-                    for (int i = 0; i < friendUser.getStoriesTimeStamps().size(); ++i) {
-                        jsonMap.put(Integer.toString(i) + "_stamp", Long.toString(friendUser
-                                .getStoriesTimeStamps().get(i)));
-                    }
-                    jsonObject.put("stories", jsonMap);
-                    jsonMap.clear();
-                }
-            }
-        }
-        return jsonObject.toString();
-    }
-
-    private boolean authorize(String api_key, long id) {
-
-        AppUser appUser = null;
-        if (userRepository.findById(id).isPresent())
-            appUser = userRepository.findById(id).get();
-        if (appUser != null) {
-            if (api_key.equals(appUser.getApiKey())) {
-                return true;
-            }
-        }
 
 //        AppUser appUser = null;
 //        if (userRepository.findById(id).isPresent())
@@ -585,148 +606,275 @@ public class MainController {
 //                    }
 //                }
 //        }
-        System.out.println("403 for: " + api_key);
-        return false;
-    }
+            System.out.println("403 for: " + api_key);
+            return false;
+        }
 
 
-    @PostMapping("/addVisitor/{pId}")
-    public @ResponseBody ResponseEntity<String> addVisitor(@RequestHeader("api_key") String api_key,
-                                                           @RequestHeader("id") Long id,
-                                                           @PathVariable Long pId) {
-        JSONObject jsonObject_response = new JSONObject();
+        @PostMapping("/addVisitor/{pId}")
+        public @ResponseBody ResponseEntity<String> addVisitor(@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable Long pId){
+            JSONObject jsonObject_response = new JSONObject();
 
-        if (authorize(api_key, id)) {
+            if (authorize(api_key, id)) {
 
-            System.out.println("ADD_VISITOR: " + id + " PLACE: " + pId);
+                System.out.println("ADD_VISITOR: " + id + " PLACE: " + pId);
+                if (placeRepository.findById(pId).isPresent()) {
+                    Place place = placeRepository.findById(pId).get();
+                    List<Long> visitors = place.getVisitorIds();
+                    if (visitors == null) {
+                        visitors = new ArrayList<>();
+                    }
+                    visitors.add(id);
+                    place.setVisitorIds(visitors);
+                    placeRepository.save(place);
+                }
+                jsonObject_response.put("response", "added");
+                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+            }
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+        }
+
+        @PostMapping("/like/{pId}")
+        public @ResponseBody ResponseEntity<String> like (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable Long pId){
+            System.out.println("On Like");
+
+            JSONObject jsonObject_response = new JSONObject();
             if (placeRepository.findById(pId).isPresent()) {
                 Place place = placeRepository.findById(pId).get();
-                List<Long> visitors = place.getVisitorIds();
-                if (visitors == null) {
-                    visitors = new ArrayList<>();
-                }
-                visitors.add(id);
-                place.setVisitorIds(visitors);
-                placeRepository.save(place);
-            }
-            jsonObject_response.put("response", "added");
-            return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
-        }
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
-    }
-
-    @PostMapping("/like/{pId}")
-    public @ResponseBody ResponseEntity<String> like(@RequestHeader("api_key") String api_key,
-                                                     @RequestHeader("id") Long id,
-                                                     @PathVariable Long pId) {
-        System.out.println("On Like");
-
-        JSONObject jsonObject_response = new JSONObject();
-        if (placeRepository.findById(pId).isPresent()) {
-            Place place = placeRepository.findById(pId).get();
-            List<Long> whoLikedList = place.getLikeIds();
-            if (whoLikedList != null) {
-                if (whoLikedList.contains(id)) {
-                    whoLikedList.remove(id);
+                List<Long> whoLikedList = place.getLikeIds();
+                if (whoLikedList != null) {
+                    if (whoLikedList.contains(id)) {
+                        whoLikedList.remove(id);
+                    } else {
+                        whoLikedList.add(id);
+                    }
                 } else {
+                    whoLikedList = new ArrayList<>();
                     whoLikedList.add(id);
                 }
-            } else {
-                whoLikedList = new ArrayList<>();
-                whoLikedList.add(id);
-            }
 
-            place.setLikeIds(whoLikedList);
-            placeRepository.save(place);
-            jsonObject_response.put("response", "like");
-            ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
-
-        }
-        jsonObject_response.put("response", "bad auth");
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
-    }
-
-    @GetMapping("/user_name/{uId}")
-    public @ResponseBody ResponseEntity<String> getUserName(@RequestHeader("api_key") String api_key,
-                                                            @RequestHeader("id") Long id,
-                                                            @PathVariable Long uId) {
-
-        JSONObject jsonObject_response = new JSONObject();
-        if (authorize(api_key, id)) {
-            if (userRepository.findById(uId).isPresent()) {
-                AppUser appUser = userRepository.findById(uId).get();
-                jsonObject_response.put("fName", appUser.getFName());
-                jsonObject_response.put("lName", appUser.getLName());
-                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
-            }
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
-        }
-        jsonObject_response.put("response", "bad auth");
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
-    }
-
-
-    @PostMapping("/add_place_comment/{pId}")
-    public @ResponseBody ResponseEntity<String> addPlaceComments(@RequestHeader("api_key") String api_key,
-                                                                 @RequestHeader("id") Long id,
-                                                                 @PathVariable("pId") Long pId,
-                                                                 @RequestBody Comment comment) {
-        JSONObject jsonObject_response = new JSONObject();
-        if (authorize(api_key, id)) {
-            if (placeRepository.findById(pId).isPresent()) {
-                Place place = placeRepository.findById(pId).get();
-                comment.setPlace(place);
-
-                System.out.println("Comment: " + comment.getContent() + " user_id: " + comment.getuId());
-
-                place.addComment(comment);
+                place.setLikeIds(whoLikedList);
                 placeRepository.save(place);
-                jsonObject_response.put("response", "comment added");
-                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+                jsonObject_response.put("response", "like");
+                ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+
             }
-            jsonObject_response.put("response", "place not found");
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+            jsonObject_response.put("response", "bad auth");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
         }
 
-        jsonObject_response.put("response", "bad auth");
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
-    }
 
+        @PostMapping("/likeTrip/{tId}")
+        public @ResponseBody ResponseEntity<String> likeTrip (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable Long tId){
+            System.out.println("On Like Trip");
 
-    @GetMapping("/get_place_comments/{pId}")
-    public @ResponseBody ResponseEntity<String> getPlaceComments(@RequestHeader("api_key") String api_key,
-                                                                 @RequestHeader("id") Long id,
-                                                                 @PathVariable("pId") Long pId) {
-
-        System.out.println("IN GET COMMENTS");
-
-        JSONObject jsonObject_response = new JSONObject();
-        if (authorize(api_key, id)) {
-            if (placeRepository.findById(pId).isPresent()) {
-                Place place = placeRepository.findById(pId).get();
-                List<Comment> comments = place.getComments();
-                JSONArray jsonArray = new JSONArray();
-                for (Comment c : comments) {
-                    JSONObject json_comment = new JSONObject();
-                    json_comment.put("content", c.getContent());
-                    json_comment.put("dateTime", c.getDateTime());
-                    json_comment.put("uId", c.getuId());
-                    jsonArray.put(json_comment);
-                    System.out.println("Comment: " + c.getDateTime() + ": " + c.getContent());
+            JSONObject jsonObject_response = new JSONObject();
+            if (tripRepository.findById(tId).isPresent()) {
+                Trip trip = tripRepository.findById(tId).get();
+                List<Long> whoLikedList = trip.getLikeIds();
+                if (whoLikedList != null) {
+                    if (whoLikedList.contains(id)) {
+                        whoLikedList.remove(id);
+                    } else {
+                        whoLikedList.add(id);
+                    }
+                } else {
+                    whoLikedList = new ArrayList<>();
+                    whoLikedList.add(id);
                 }
-                jsonObject_response.put("comments", jsonArray);
-                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+
+                trip.setLikeIds(whoLikedList);
+                tripRepository.save(trip);
+                jsonObject_response.put("response", "like");
+                ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
 
             }
-            jsonObject_response.put("response", "place not found");
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+            jsonObject_response.put("response", "bad auth");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
         }
 
-        jsonObject_response.put("response", "bad auth");
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
-    }
 
-}
+        @GetMapping("/user_name/{uId}")
+        public @ResponseBody ResponseEntity<String> getUserName (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable Long uId){
+
+            JSONObject jsonObject_response = new JSONObject();
+            if (authorize(api_key, id)) {
+                if (userRepository.findById(uId).isPresent()) {
+                    AppUser appUser = userRepository.findById(uId).get();
+                    jsonObject_response.put("fName", appUser.getFName());
+                    jsonObject_response.put("lName", appUser.getLName());
+                    jsonObject_response.put("uId", uId);
+                    return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+                }
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+            }
+            jsonObject_response.put("response", "bad auth");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+        }
+
+
+        @PostMapping("/add_place_comment/{pId}")
+        public @ResponseBody ResponseEntity<String> addPlaceComments (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable("pId") Long pId,
+                @RequestBody Comment comment){
+            JSONObject jsonObject_response = new JSONObject();
+            if (authorize(api_key, id)) {
+                if (placeRepository.findById(pId).isPresent()) {
+                    Place place = placeRepository.findById(pId).get();
+                    comment.setPlace(place);
+
+                    System.out.println("Comment: " + comment.getContent() + " user_id: " + comment.getuId());
+
+                    place.addComment(comment);
+                    placeRepository.save(place);
+                    jsonObject_response.put("response", "comment added");
+                    return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+                }
+                jsonObject_response.put("response", "place not found");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+            }
+
+            jsonObject_response.put("response", "bad auth");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+        }
+
+
+//    @PostMapping("/add_trip_comment/{tId}")
+//    public @ResponseBody ResponseEntity<String> addTripComments(@RequestHeader("api_key") String api_key,
+//                                                                @RequestHeader("id") Long id,
+//                                                                @PathVariable("tId") Long tId,
+//                                                                @RequestBody Comment comment) {
+//
+//        System.out.println("on add trip comment");
+//
+//        JSONObject jsonObject_response = new JSONObject();
+//        if (authorize(api_key, id)) {
+//            if (tripRepository.findById(tId).isPresent()) {
+//                Trip trip = tripRepository.findById(tId).get();
+//                comment.setTrip(trip);
+//
+//                System.out.println("Comment: " + comment.getContent() + " user_id: " + comment.getuId());
+//
+//                trip.addComment(comment);
+//                tripRepository.save(trip);
+//                jsonObject_response.put("response", "comment added");
+//                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+//            }
+//            jsonObject_response.put("response", "place not found");
+//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+//        }
+//
+//        jsonObject_response.put("response", "bad auth");
+//        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+//    }
+
+
+        @GetMapping("/get_place_comments/{pId}")
+        public @ResponseBody ResponseEntity<String> getPlaceComments (@RequestHeader("api_key") String api_key,
+                @RequestHeader("id") Long id,
+                @PathVariable("pId") Long pId){
+
+            System.out.println("IN GET COMMENTS");
+
+            JSONObject jsonObject_response = new JSONObject();
+            if (authorize(api_key, id)) {
+                if (placeRepository.findById(pId).isPresent()) {
+                    Place place = placeRepository.findById(pId).get();
+                    List<Comment> comments = place.getComments();
+                    JSONArray jsonArray = new JSONArray();
+                    for (Comment c : comments) {
+                        JSONObject json_comment = new JSONObject();
+                        json_comment.put("content", c.getContent());
+                        json_comment.put("dateTime", c.getDateTime());
+                        json_comment.put("uId", c.getuId());
+                        jsonArray.put(json_comment);
+                        System.out.println("Comment: " + c.getDateTime() + ": " + c.getContent());
+                    }
+                    jsonObject_response.put("comments", jsonArray);
+                    return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+
+                }
+                jsonObject_response.put("response", "place not found");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+            }
+
+            jsonObject_response.put("response", "bad auth");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+        }
+
+
+//    @GetMapping("/places_ids")
+//    public @ResponseBody ResponseEntity<String> getPlacesIds(@RequestHeader("api_key") String api_key,
+//                                                             @RequestHeader("id") Long id) {
+//        JSONObject jsonObject_response = new JSONObject();
+//
+//        if (authorize(api_key, id)) {
+//            JSONArray jsonArray = new JSONArray();
+//            JSONObject json_place_id = null;
+//            if (placeRepository.count() > 0) {
+//                Iterable<Place> placeList = placeRepository.findAll();
+//                for (Place p : placeList) {
+//                    json_place_id = new JSONObject();
+//                    json_place_id.put("id", p.getId());
+//                    jsonArray.put(json_place_id);
+//                }
+//
+//                jsonObject_response.put("places", jsonArray);
+//                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+//            } else {
+//                jsonObject_response.put("response", "places not found");
+//                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+//            }
+//
+//        }
+//        jsonObject_response.put("response", "bad auth");
+//        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+//    }
+
+
+//    @GetMapping("/get_trip_comments/{tId}")
+//    public @ResponseBody ResponseEntity<String> getTripComments(@RequestHeader("api_key") String api_key,
+//                                                                @RequestHeader("id") Long id,
+//                                                                @PathVariable("tId") Long tId) {
+//        System.out.println("IN GET COMMENTS");
+//
+//        JSONObject jsonObject_response = new JSONObject();
+//        if (authorize(api_key, id)) {
+//            if (tripRepository.findById(tId).isPresent()) {
+//                Trip trip = tripRepository.findById(tId).get();
+//                List<Comment> comments = trip.getComments();
+//                JSONArray jsonArray = new JSONArray();
+//                for (Comment c : comments) {
+//                    JSONObject json_comment = new JSONObject();
+//                    json_comment.put("content", c.getContent());
+//                    json_comment.put("dateTime", c.getDateTime());
+//                    json_comment.put("uId", c.getuId());
+//                    jsonArray.put(json_comment);
+//                    System.out.println("Comment: " + c.getDateTime() + ": " + c.getContent());
+//                }
+//                jsonObject_response.put("comments", jsonArray);
+//                return ResponseEntity.status(HttpStatus.OK).body(jsonObject_response.toString());
+//
+//            }
+//            jsonObject_response.put("response", "place not found");
+//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(jsonObject_response.toString());
+//        }
+//
+//        jsonObject_response.put("response", "bad auth");
+//        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(jsonObject_response.toString());
+//    }
+
+
+    }
 
 
 

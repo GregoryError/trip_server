@@ -1,20 +1,26 @@
 package com.kaleidoscope.tripserver.pojos;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.persistence.*;
+import java.util.ArrayList;
 import java.util.List;
 
 
 @Entity
+@Table(name = "trip")
 public class Trip implements TripItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "trip_seq")
+    @Column(name = "id")
     private long id;
     @JsonProperty("name")
     private String name;
 
+    @JsonProperty("date")
+    private String date;
 
     public Integer getImagesCount() {
         return imagesCount;
@@ -58,6 +64,34 @@ public class Trip implements TripItem {
     @JsonProperty("likeIds")
     @ElementCollection(targetClass = Long.class)
     private List<Long> likeIds;
+
+
+
+//    public List<Comment> getComments() {
+//        return comments;
+//    }
+//
+//    public void setComments(List<Comment> comments) {
+//        this.comments = comments;
+//    }
+//
+//    @JsonProperty("comments")
+//    @OneToMany(mappedBy = "trip", cascade = CascadeType.ALL, orphanRemoval = true)
+//    @JsonManagedReference
+//    private List<Comment> comments = new ArrayList<>();
+//
+//    public void addComment(Comment comment) {
+//        comments.add(comment);
+//    }
+
+
+    public String getDate() {
+        return date;
+    }
+
+    public void setDate(String date) {
+        this.date = date;
+    }
 
     @Override
     public long getId() {

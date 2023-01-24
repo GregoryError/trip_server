@@ -54,11 +54,9 @@ public class Place implements TripItem {
     @JsonManagedReference
     private List<Comment> comments = new ArrayList<>();
 
-
     public void addComment(Comment comment) {
         comments.add(comment);
     }
-
 
     @Override
     public long getId() {

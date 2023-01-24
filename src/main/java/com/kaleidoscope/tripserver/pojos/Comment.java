@@ -1,6 +1,7 @@
 package com.kaleidoscope.tripserver.pojos;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import org.hibernate.annotations.Cascade;
 
@@ -38,6 +39,26 @@ public class Comment {
     @JoinColumn(name = "place_id")
     @JsonBackReference
     private Place place;
+
+
+
+//    public Trip getTrip() {
+//        return trip;
+//    }
+//
+//    public void setTrip(Trip trip) {
+//        this.trip = trip;
+//    }
+
+
+//    @ManyToOne
+//    @Cascade(org.hibernate.annotations.CascadeType.SAVE_UPDATE)
+//    @JoinColumn(name = "trip_id")
+//    @JsonBackReference
+//    private Trip trip;
+
+
+
 
 
     public Long getId() {
