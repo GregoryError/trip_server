@@ -43,7 +43,7 @@ public class MainController {
     private TripRepository tripRepository;
 
     // TODO: Adjust media storage
-    private static final String UPLOAD_DIR = "/Users/user/IdeaProjects/tripserver/uploads/";
+    private static final String UPLOAD_DIR = "uploads/";
     private Path path;
 
     private int storiesBeforeCleaningCounter = 0;

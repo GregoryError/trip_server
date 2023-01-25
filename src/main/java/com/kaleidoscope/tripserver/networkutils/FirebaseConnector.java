@@ -12,8 +12,15 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 
 public class FirebaseConnector {
+//    private final String SERVICE_KEY =
+//            "/Users/user/IdeaProjects/tripserver/src/main/resources/static/trip-friend-4409c-firebase-adminsdk-y41p3-36b843a233.json";
+
     private final String SERVICE_KEY =
-            "/Users/user/IdeaProjects/tripserver/src/main/resources/static/trip-friend-4409c-firebase-adminsdk-y41p3-36b843a233.json";
+            "firebase_cred.json";
+
+    // /trip_server/trip_server_bin/trip_server_bin
+
+
     private static FirebaseConnector instance = null;
     private FirebaseAuth firebaseAuth = null;
 
